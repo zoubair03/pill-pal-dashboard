@@ -33,6 +33,14 @@ import { PillWheel } from "@/components/pill-wheel"
 import { WeeklyMatrix } from "@/components/weekly-matrix"
 import { ScheduleSheet } from "@/components/schedule-sheet"
 
+// Initial medicine assignments for slots
+const initialSlotMedicines: Record<number, string[]> = {
+  1: ["Aspirin", "Vitamin D"],
+  2: ["Metformin"],
+  3: ["Lisinopril", "Atorvastatin"],
+  4: ["Aspirin"],
+}
+
 type DoseStatus = "dispensed" | "pending" | "missed"
 
 interface DoseSession {
@@ -45,7 +53,7 @@ interface ActivityLogEntry {
   id: string
   type: "dispensed" | "manual" | "missed" | "reset"
   message: string
-  timestamp: Date
+  timeLabel: string
 }
 
 const initialWeekData: Record<string, DoseSession> = {
@@ -101,30 +109,31 @@ export default function PillPalDashboard() {
   const [isDispensing, setIsDispensing] = useState(false)
   const [weekData, setWeekData] = useState<Record<string, DoseSession>>(initialWeekData)
   const [countdown, setCountdown] = useState("")
+  const [slotMedicines, setSlotMedicines] = useState<Record<number, string[]>>(initialSlotMedicines)
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([
     {
       id: "1",
       type: "dispensed",
       message: "Midday dose dispensed at 13:02",
-      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      timeLabel: "13:02",
     },
     {
       id: "2",
       type: "manual",
       message: "Manual dispense triggered at 10:15",
-      timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000),
+      timeLabel: "10:15",
     },
     {
       id: "3",
       type: "dispensed",
       message: "Morning dose dispensed at 08:00",
-      timestamp: new Date(Date.now() - 7 * 60 * 60 * 1000),
+      timeLabel: "08:00",
     },
     {
       id: "4",
       type: "missed",
       message: "Evening dose missed - Wed",
-      timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      timeLabel: "Yesterday",
     },
   ])
 
@@ -149,7 +158,7 @@ export default function PillPalDashboard() {
       id: Date.now().toString(),
       type,
       message,
-      timestamp: new Date(),
+      timeLabel: formatTime(new Date()),
     }
     setActivityLog((prev) => [newEntry, ...prev].slice(0, 5))
   }
@@ -175,6 +184,13 @@ export default function PillPalDashboard() {
   const handleResetWeek = () => {
     setWeekData(emptyWeekData)
     addActivityLog("reset", `Week reset at ${formatTime(new Date())}`)
+  }
+
+  const handleUpdateSlotMedicines = (slot: number, medicines: string[]) => {
+    setSlotMedicines((prev) => ({
+      ...prev,
+      [slot]: medicines,
+    }))
   }
 
   const getActivityIcon = (type: ActivityLogEntry["type"]) => {
@@ -328,7 +344,11 @@ export default function PillPalDashboard() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-col items-center">
-                <PillWheel currentSlot={currentSlot} />
+                <PillWheel 
+                  currentSlot={currentSlot} 
+                  slotMedicines={slotMedicines}
+                  onUpdateSlotMedicines={handleUpdateSlotMedicines}
+                />
                 <div className="mt-4 text-center">
                   <p className="text-sm text-muted-foreground">
                     22-Slot Motor Wheel - 21 Doses + Home Position
@@ -410,10 +430,7 @@ export default function PillPalDashboard() {
                     {getActivityIcon(entry.type)}
                     <span className="flex-1 text-sm">{entry.message}</span>
                     <span className="text-xs text-muted-foreground">
-                      {entry.timestamp.toLocaleTimeString("en-US", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {entry.timeLabel}
                     </span>
                   </div>
                 ))
