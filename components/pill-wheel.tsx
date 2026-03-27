@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { cn } from "@/lib/utils"
-import { Home, Plus, Pill, X } from "lucide-react"
+import { Home, Plus, Pill, X, Search } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -16,9 +16,32 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { Input } from "@/components/ui/input"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import medications from "@/data/medications.json"
+
+interface Medication {
+  dci: string
+  brand: string
+  dose: string
+  form: string
+  presentation: string
+  classe: string
+  sousclasse: string
+  laboratoire: string
+  tableau: string
+  indication: string
+  label: string
+  full: string
+}
 
 interface PillWheelProps {
   currentSlot: number
@@ -41,13 +64,36 @@ export function PillWheel({
   const centerX = 180
   const centerY = 180
 
+  // Filter medications based on search
+  const filteredMedications = useMemo(() => {
+    if (!searchValue.trim()) return []
+    const query = searchValue.toLowerCase()
+    return (medications as Medication[])
+      .filter(med => 
+        med.brand.toLowerCase().includes(query) ||
+        med.dci.toLowerCase().includes(query) ||
+        med.label.toLowerCase().includes(query)
+      )
+      .slice(0, 10) // Limit to 10 results for performance
+  }, [searchValue])
+
   const handleSlotClick = (slotIndex: number) => {
     if (slotIndex === 0) return // Home slot is not clickable
     setSelectedSlot(slotIndex)
     setSearchValue("")
   }
 
-  const handleAddMedicine = () => {
+  const handleSelectMedication = (medication: Medication) => {
+    if (selectedSlot === null) return
+    const currentMeds = slotMedicines[selectedSlot] || []
+    const medLabel = medication.label
+    if (!currentMeds.includes(medLabel)) {
+      onUpdateSlotMedicines(selectedSlot, [...currentMeds, medLabel])
+    }
+    setSearchValue("")
+  }
+
+  const handleAddCustomMedicine = () => {
     if (!searchValue.trim() || selectedSlot === null) return
     const currentMeds = slotMedicines[selectedSlot] || []
     if (!currentMeds.includes(searchValue.trim())) {
@@ -60,12 +106,6 @@ export function PillWheel({
     if (selectedSlot === null) return
     const currentMeds = slotMedicines[selectedSlot] || []
     onUpdateSlotMedicines(selectedSlot, currentMeds.filter(m => m !== medicine))
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleAddMedicine()
-    }
   }
 
   return (
@@ -197,9 +237,9 @@ export function PillWheel({
                   </TooltipTrigger>
                   <TooltipContent 
                     side="top" 
-                    className="max-w-48 bg-background border border-border"
+                    className="max-w-64 bg-background border border-border"
                   >
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <p className="font-medium text-foreground text-sm">Slot {index}</p>
                       <div className="flex flex-wrap gap-1">
                         {slotMedicines[index]?.map((med) => (
@@ -267,28 +307,59 @@ export function PillWheel({
                 Slot {selectedSlot} - Assign Medicines
               </DialogTitle>
               <DialogDescription>
-                Add medicines to this slot. They will be dispensed when the wheel rotates to this position.
+                Search and add medicines to this slot. They will be dispensed when the wheel rotates to this position.
               </DialogDescription>
             </DialogHeader>
             
             <div className="space-y-4 py-4">
-              {/* Search/Add input */}
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Enter medicine name..."
-                  value={searchValue}
-                  onChange={(e) => setSearchValue(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="flex-1"
-                />
-                <Button 
-                  onClick={handleAddMedicine}
-                  disabled={!searchValue.trim()}
-                  size="icon"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
+              {/* Search with autocomplete */}
+              <Command className="rounded-lg border shadow-md">
+                <div className="flex items-center border-b px-3">
+                  <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                  <input
+                    placeholder="Search medicines..."
+                    value={searchValue}
+                    onChange={(e) => setSearchValue(e.target.value)}
+                    className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                  {searchValue && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleAddCustomMedicine}
+                      className="h-8 px-2 text-xs"
+                    >
+                      <Plus className="mr-1 h-3 w-3" />
+                      Add
+                    </Button>
+                  )}
+                </div>
+                <CommandList className="max-h-48">
+                  {searchValue.trim() && filteredMedications.length === 0 && (
+                    <CommandEmpty className="py-4 text-center text-sm">
+                      No medicines found. Press &quot;Add&quot; to add custom medicine.
+                    </CommandEmpty>
+                  )}
+                  {filteredMedications.length > 0 && (
+                    <CommandGroup heading="Medicines">
+                      {filteredMedications.map((med, index) => (
+                        <CommandItem
+                          key={`${med.label}-${index}`}
+                          onSelect={() => handleSelectMedication(med)}
+                          className="cursor-pointer"
+                        >
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium">{med.label}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {med.dci} - {med.form}
+                            </span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+                </CommandList>
+              </Command>
 
               {/* Current medicines in slot */}
               {selectedSlot !== null && (slotMedicines[selectedSlot]?.length || 0) > 0 && (

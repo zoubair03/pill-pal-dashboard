@@ -28,10 +28,26 @@ import {
   RotateCcw,
   Clock,
   AlertTriangle,
+  User,
+  Calendar,
+  Phone,
 } from "lucide-react"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { PillWheel } from "@/components/pill-wheel"
 import { WeeklyMatrix } from "@/components/weekly-matrix"
 import { ScheduleSheet } from "@/components/schedule-sheet"
+
+// Patient profile data
+const patientProfile = {
+  name: "Mohamed Ben Ali",
+  age: 65,
+  dateOfBirth: "1960-03-15",
+  phone: "+216 71 234 567",
+  emergencyContact: "+216 71 987 654",
+  conditions: ["Diabetes Type 2", "Hypertension"],
+  allergies: ["Penicillin"],
+  avatar: "",
+}
 
 // Initial medicine assignments for slots
 const initialSlotMedicines: Record<number, string[]> = {
@@ -266,6 +282,51 @@ export default function PillPalDashboard() {
       </header>
 
       <main className="container mx-auto space-y-6 px-4 py-6">
+        {/* Patient Profile Section */}
+        <Card className="shadow-md">
+          <CardContent className="py-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-4">
+                <Avatar className="h-16 w-16 border-2 border-blue-200">
+                  <AvatarImage src={patientProfile.avatar} alt={patientProfile.name} />
+                  <AvatarFallback className="bg-blue-100 text-blue-700 text-lg font-semibold">
+                    {patientProfile.name.split(" ").map(n => n[0]).join("")}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="space-y-1">
+                  <h2 className="text-xl font-bold text-gray-900">{patientProfile.name}</h2>
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <User className="h-3.5 w-3.5" />
+                      {patientProfile.age} years old
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3.5 w-3.5" />
+                      DOB: {new Date(patientProfile.dateOfBirth).toLocaleDateString("en-GB")}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Phone className="h-3.5 w-3.5" />
+                      {patientProfile.phone}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 sm:justify-end">
+                {patientProfile.conditions.map((condition) => (
+                  <Badge key={condition} variant="secondary" className="bg-blue-100 text-blue-800">
+                    {condition}
+                  </Badge>
+                ))}
+                {patientProfile.allergies.map((allergy) => (
+                  <Badge key={allergy} variant="destructive" className="bg-red-100 text-red-800">
+                    Allergy: {allergy}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Hero Section - Immediate Status */}
         <Card className="border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 shadow-lg">
           <CardContent className="flex flex-col items-center gap-6 py-8 text-center sm:flex-row sm:text-left">
