@@ -41,12 +41,13 @@ export function ScheduleSheet() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="outline" className="gap-2">
-          <Settings className="h-4 w-4" />
-          Schedule Settings
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs sm:text-sm">
+          <Settings className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          <span className="hidden sm:inline">Schedule Settings</span>
+          <span className="sm:hidden">Settings</span>
         </Button>
       </SheetTrigger>
-      <SheetContent className="sm:max-w-md">
+      <SheetContent className="w-full sm:max-w-md">
         <SheetHeader>
           <SheetTitle>Dispense Schedule</SheetTitle>
           <SheetDescription>
@@ -57,7 +58,7 @@ export function ScheduleSheet() {
         <div className="mt-6 space-y-6">
           {/* Morning */}
           <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400">
               <Sun className="h-6 w-6" />
             </div>
             <div className="flex-1 space-y-1.5">
@@ -78,7 +79,7 @@ export function ScheduleSheet() {
 
           {/* Midday */}
           <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600 dark:bg-sky-900/50 dark:text-sky-400">
               <CloudSun className="h-6 w-6" />
             </div>
             <div className="flex-1 space-y-1.5">
@@ -99,7 +100,7 @@ export function ScheduleSheet() {
 
           {/* Evening */}
           <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400">
               <Moon className="h-6 w-6" />
             </div>
             <div className="flex-1 space-y-1.5">
@@ -122,7 +123,7 @@ export function ScheduleSheet() {
           <Button
             onClick={handleSave}
             disabled={isSaving}
-            className="w-full gap-2 bg-blue-600 hover:bg-blue-700"
+            className="w-full gap-2 bg-primary hover:bg-primary/90"
           >
             {isSaving ? (
               <>

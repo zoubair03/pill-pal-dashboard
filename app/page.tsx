@@ -31,11 +31,13 @@ import {
   User,
   Calendar,
   Phone,
+  Activity,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { PillWheel } from "@/components/pill-wheel"
 import { WeeklyMatrix } from "@/components/weekly-matrix"
 import { ScheduleSheet } from "@/components/schedule-sheet"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 // Patient profile data
 const patientProfile = {
@@ -212,24 +214,27 @@ export default function PillPalDashboard() {
   const getActivityIcon = (type: ActivityLogEntry["type"]) => {
     switch (type) {
       case "dispensed":
-        return <CheckCircle2 className="h-4 w-4 text-green-500" />
+        return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
       case "manual":
         return <AlertTriangle className="h-4 w-4 text-amber-500" />
       case "missed":
         return <AlertTriangle className="h-4 w-4 text-red-500" />
       case "reset":
-        return <RotateCcw className="h-4 w-4 text-blue-500" />
+        return <RotateCcw className="h-4 w-4 text-primary" />
     }
   }
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-b from-blue-50 to-white">
+    <div className="relative min-h-screen bg-background">
+      {/* Background gradient */}
+      <div className="pointer-events-none fixed inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/5 dark:from-primary/10 dark:to-primary/5" />
+      
       {/* Offline Overlay */}
       {isOffline && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/70 backdrop-blur-md">
-          <div className="flex flex-col items-center gap-4 rounded-2xl bg-white/80 p-8 shadow-xl ring-1 ring-black/5">
-            <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
-            <p className="text-lg font-medium text-gray-700">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md">
+          <div className="flex flex-col items-center gap-4 rounded-2xl bg-card p-8 shadow-2xl ring-1 ring-border">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <p className="text-lg font-semibold text-foreground">
               Reconnecting to PillPal Hardware...
             </p>
             <p className="text-sm text-muted-foreground">
@@ -240,24 +245,24 @@ export default function PillPalDashboard() {
       )}
 
       {/* Top Navigation */}
-      <header className="sticky top-0 z-40 border-b bg-white/80 backdrop-blur-sm">
+      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="container mx-auto flex items-center justify-between px-4 py-3">
           {/* Logo */}
-          <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25">
               <Pill className="h-5 w-5" />
             </div>
-            <span className="text-xl font-bold text-gray-900">PillPal</span>
+            <span className="text-xl font-bold tracking-tight text-foreground">PillPal</span>
           </div>
 
           {/* Status Badges */}
           <div className="flex items-center gap-2">
             <Badge
               variant="outline"
-              className={`gap-1.5 ${
+              className={`hidden gap-1.5 sm:flex ${
                 batteryLevel < 20
-                  ? "border-red-200 bg-red-50 text-red-600"
-                  : "border-green-200 bg-green-50 text-green-600"
+                  ? "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400"
+                  : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"
               }`}
             >
               <Battery className="h-3.5 w-3.5" />
@@ -265,60 +270,61 @@ export default function PillPalDashboard() {
             </Badge>
             <Badge
               variant="outline"
-              className="gap-1.5 border-green-200 bg-green-50 text-green-600"
+              className="hidden gap-1.5 border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 sm:flex"
             >
               <Wifi className="h-3.5 w-3.5" />
               Connected
             </Badge>
             <Badge
               variant="outline"
-              className="hidden gap-1.5 border-gray-200 bg-gray-50 text-gray-600 sm:flex"
+              className="hidden gap-1.5 border-border bg-secondary text-secondary-foreground md:flex"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Synced just now
             </Badge>
+            <ThemeToggle />
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto space-y-6 px-4 py-6">
+      <main className="container relative mx-auto space-y-4 px-4 py-4 sm:space-y-6 sm:py-6">
         {/* Patient Profile Section */}
-        <Card className="shadow-md">
-          <CardContent className="py-4">
+        <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm">
+          <CardContent className="p-4 sm:py-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-4">
-                <Avatar className="h-16 w-16 border-2 border-blue-200">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <Avatar className="h-12 w-12 border-2 border-primary/20 sm:h-14 sm:w-14">
                   <AvatarImage src={patientProfile.avatar} alt={patientProfile.name} />
-                  <AvatarFallback className="bg-blue-100 text-blue-700 text-lg font-semibold">
+                  <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold sm:text-base">
                     {patientProfile.name.split(" ").map(n => n[0]).join("")}
                   </AvatarFallback>
                 </Avatar>
-                <div className="space-y-1">
-                  <h2 className="text-xl font-bold text-gray-900">{patientProfile.name}</h2>
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <div className="space-y-1 min-w-0">
+                  <h2 className="text-lg font-bold text-foreground sm:text-xl truncate">{patientProfile.name}</h2>
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <User className="h-3.5 w-3.5" />
-                      {patientProfile.age} years old
+                      <User className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                      {patientProfile.age}y
+                    </span>
+                    <span className="hidden items-center gap-1 xs:flex">
+                      <Calendar className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                      {new Date(patientProfile.dateOfBirth).toLocaleDateString("en-GB")}
                     </span>
                     <span className="flex items-center gap-1">
-                      <Calendar className="h-3.5 w-3.5" />
-                      DOB: {new Date(patientProfile.dateOfBirth).toLocaleDateString("en-GB")}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Phone className="h-3.5 w-3.5" />
-                      {patientProfile.phone}
+                      <Phone className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                      <span className="truncate max-w-24 sm:max-w-none">{patientProfile.phone}</span>
                     </span>
                   </div>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2 sm:justify-end">
+              <div className="flex flex-wrap gap-1.5 sm:gap-2 sm:justify-end">
                 {patientProfile.conditions.map((condition) => (
-                  <Badge key={condition} variant="secondary" className="bg-blue-100 text-blue-800">
+                  <Badge key={condition} variant="secondary" className="bg-primary/10 text-primary text-xs">
                     {condition}
                   </Badge>
                 ))}
                 {patientProfile.allergies.map((allergy) => (
-                  <Badge key={allergy} variant="destructive" className="bg-red-100 text-red-800">
+                  <Badge key={allergy} variant="destructive" className="bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400 text-xs">
                     Allergy: {allergy}
                   </Badge>
                 ))}
@@ -328,22 +334,22 @@ export default function PillPalDashboard() {
         </Card>
 
         {/* Hero Section - Immediate Status */}
-        <Card className="border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 shadow-lg">
-          <CardContent className="flex flex-col items-center gap-6 py-8 text-center sm:flex-row sm:text-left">
-            <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-green-100 ring-4 ring-green-200/50">
-              <CheckCircle2 className="h-14 w-14 text-green-600" />
+        <Card className="overflow-hidden border-emerald-200/50 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-xl shadow-emerald-500/10 dark:border-emerald-800/30 dark:from-emerald-950/50 dark:to-teal-950/50">
+          <CardContent className="flex flex-col items-center gap-4 p-4 text-center sm:flex-row sm:gap-6 sm:p-6 sm:text-left">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 ring-4 ring-emerald-200/50 dark:bg-emerald-900 dark:ring-emerald-800/50 sm:h-20 sm:w-20">
+              <CheckCircle2 className="h-9 w-9 text-emerald-600 dark:text-emerald-400 sm:h-11 sm:w-11" />
             </div>
             <div className="flex-1 space-y-2">
-              <h1 className="text-2xl font-bold text-green-800">
+              <h1 className="text-xl font-bold text-emerald-800 dark:text-emerald-200 sm:text-2xl">
                 Medication up to date
               </h1>
               <div className="flex flex-col items-center gap-2 sm:flex-row sm:items-center">
-                <p className="text-lg text-green-700">
+                <p className="text-base text-emerald-700 dark:text-emerald-300 sm:text-lg">
                   Next dose: <span className="font-semibold">Midday (13:00)</span>
                 </p>
                 <Badge 
                   variant="secondary" 
-                  className="gap-1 bg-green-200/70 text-green-800 hover:bg-green-200"
+                  className="gap-1 bg-emerald-200/70 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-800 dark:text-emerald-200"
                 >
                   <Clock className="h-3 w-3" />
                   {countdown}
@@ -354,7 +360,7 @@ export default function PillPalDashboard() {
               <AlertDialogTrigger asChild>
                 <Button
                   size="lg"
-                  className="gap-2 bg-blue-600 px-8 text-lg hover:bg-blue-700"
+                  className="w-full gap-2 bg-gradient-to-r from-primary to-primary/90 px-6 text-base font-semibold shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all sm:w-auto sm:px-8 sm:text-lg"
                   disabled={isDispensing}
                 >
                   {isDispensing ? (
@@ -383,7 +389,7 @@ export default function PillPalDashboard() {
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleDispense}
-                    className="bg-blue-600 hover:bg-blue-700"
+                    className="bg-primary hover:bg-primary/90"
                   >
                     Yes, Dispense
                   </AlertDialogAction>
@@ -394,27 +400,27 @@ export default function PillPalDashboard() {
         </Card>
 
         {/* Hardware Mirror & Weekly Matrix */}
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
           {/* The Hardware Mirror (The Wheel) */}
-          <Card className="shadow-md">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <div className="h-2 w-2 rounded-full bg-blue-600" />
+          <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm">
+            <CardHeader className="pb-2 sm:pb-4">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <div className="h-2 w-2 rounded-full bg-primary" />
                 Hardware Mirror
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pb-4 sm:pb-6">
               <div className="flex flex-col items-center">
                 <PillWheel 
                   currentSlot={currentSlot} 
                   slotMedicines={slotMedicines}
                   onUpdateSlotMedicines={handleUpdateSlotMedicines}
                 />
-                <div className="mt-4 text-center">
-                  <p className="text-sm text-muted-foreground">
+                <div className="mt-3 text-center sm:mt-4">
+                  <p className="text-xs text-muted-foreground sm:text-sm">
                     22-Slot Motor Wheel - 21 Doses + Home Position
                   </p>
-                  <p className="mt-1 font-medium text-blue-600">
+                  <p className="mt-1 font-semibold text-primary text-sm sm:text-base">
                     Current Position: Slot {currentSlot}
                   </p>
                 </div>
@@ -423,18 +429,18 @@ export default function PillPalDashboard() {
           </Card>
 
           {/* Weekly Matrix */}
-          <Card className="shadow-md">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <div className="h-2 w-2 rounded-full bg-blue-600" />
+          <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 sm:pb-4">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <div className="h-2 w-2 rounded-full bg-primary" />
                 Weekly Overview
               </CardTitle>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="gap-1.5 text-red-600 hover:bg-red-50 hover:text-red-700">
-                      <RotateCcw className="h-4 w-4" />
-                      Reset Week
+                    <Button variant="ghost" size="sm" className="gap-1 text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950 h-8 px-2 sm:gap-1.5 sm:px-3">
+                      <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      <span className="hidden sm:inline">Reset Week</span>
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
@@ -461,7 +467,7 @@ export default function PillPalDashboard() {
                 <ScheduleSheet />
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pb-4 sm:pb-6">
               <WeeklyMatrix 
                 weekData={weekData} 
                 onManualDispense={handleManualDispense}
@@ -471,25 +477,25 @@ export default function PillPalDashboard() {
         </div>
 
         {/* Recent Activity Log */}
-        <Card className="shadow-md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <div className="h-2 w-2 rounded-full bg-blue-600" />
+        <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm">
+          <CardHeader className="pb-2 sm:pb-4">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Activity className="h-4 w-4 text-primary" />
               Recent Activity
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
+          <CardContent className="pb-4 sm:pb-6">
+            <div className="space-y-2 sm:space-y-3">
               {activityLog.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No recent activity</p>
               ) : (
                 activityLog.map((entry) => (
                   <div
                     key={entry.id}
-                    className="flex items-center gap-3 rounded-lg border bg-gray-50/50 px-4 py-3"
+                    className="flex items-center gap-3 rounded-xl border border-border/50 bg-secondary/30 px-3 py-2.5 sm:px-4 sm:py-3"
                   >
                     {getActivityIcon(entry.type)}
-                    <span className="flex-1 text-sm">{entry.message}</span>
+                    <span className="flex-1 text-xs sm:text-sm text-foreground">{entry.message}</span>
                     <span className="text-xs text-muted-foreground">
                       {entry.timeLabel}
                     </span>
@@ -501,10 +507,10 @@ export default function PillPalDashboard() {
         </Card>
 
         {/* Offline Mode Toggle (for testing) */}
-        <Card className="border-dashed border-gray-300 bg-gray-50/50">
-          <CardContent className="flex items-center justify-between py-4">
+        <Card className="border-dashed border-border/50 bg-secondary/30">
+          <CardContent className="flex items-center justify-between p-4">
             <div className="space-y-0.5">
-              <Label htmlFor="offline-toggle" className="text-sm font-medium">
+              <Label htmlFor="offline-toggle" className="text-xs sm:text-sm font-medium">
                 Test Offline State
               </Label>
               <p className="text-xs text-muted-foreground">
