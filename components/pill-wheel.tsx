@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { cn } from "@/lib/utils"
-import { Home, Plus, Pill, X, Search } from "lucide-react"
+import { Home, Plus, Pill, X, Search, Check } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -16,16 +16,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import medications from "@/data/medications.json"
 
 interface Medication {
@@ -58,6 +52,10 @@ export function PillWheel({
 }: PillWheelProps) {
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null)
   const [searchValue, setSearchValue] = useState("")
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
   
   const slots = Array.from({ length: totalSlots }, (_, i) => i)
   const radius = 140
@@ -74,13 +72,24 @@ export function PillWheel({
         med.dci.toLowerCase().includes(query) ||
         med.label.toLowerCase().includes(query)
       )
-      .slice(0, 10) // Limit to 10 results for performance
+      .slice(0, 8)
+  }, [searchValue])
+
+  // Reset highlight when results change
+  useEffect(() => {
+    setHighlightedIndex(-1)
+  }, [filteredMedications])
+
+  // Show dropdown when there are results
+  useEffect(() => {
+    setIsDropdownOpen(searchValue.trim().length > 0)
   }, [searchValue])
 
   const handleSlotClick = (slotIndex: number) => {
-    if (slotIndex === 0) return // Home slot is not clickable
+    if (slotIndex === 0) return
     setSelectedSlot(slotIndex)
     setSearchValue("")
+    setIsDropdownOpen(false)
   }
 
   const handleSelectMedication = (medication: Medication) => {
@@ -91,6 +100,8 @@ export function PillWheel({
       onUpdateSlotMedicines(selectedSlot, [...currentMeds, medLabel])
     }
     setSearchValue("")
+    setIsDropdownOpen(false)
+    inputRef.current?.focus()
   }
 
   const handleAddCustomMedicine = () => {
@@ -100,12 +111,40 @@ export function PillWheel({
       onUpdateSlotMedicines(selectedSlot, [...currentMeds, searchValue.trim()])
     }
     setSearchValue("")
+    setIsDropdownOpen(false)
   }
 
   const handleRemoveMedicine = (medicine: string) => {
     if (selectedSlot === null) return
     const currentMeds = slotMedicines[selectedSlot] || []
     onUpdateSlotMedicines(selectedSlot, currentMeds.filter(m => m !== medicine))
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setHighlightedIndex(prev => 
+        prev < filteredMedications.length - 1 ? prev + 1 : prev
+      )
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      setHighlightedIndex(prev => prev > 0 ? prev - 1 : 0)
+    } else if (e.key === "Enter") {
+      e.preventDefault()
+      if (highlightedIndex >= 0 && highlightedIndex < filteredMedications.length) {
+        handleSelectMedication(filteredMedications[highlightedIndex])
+      } else if (searchValue.trim()) {
+        handleAddCustomMedicine()
+      }
+    } else if (e.key === "Escape") {
+      setIsDropdownOpen(false)
+      setSearchValue("")
+    }
+  }
+
+  const isAlreadyAdded = (medLabel: string) => {
+    if (selectedSlot === null) return false
+    return slotMedicines[selectedSlot]?.includes(medLabel) || false
   }
 
   return (
@@ -311,87 +350,117 @@ export function PillWheel({
               </DialogDescription>
             </DialogHeader>
             
-            <div className="space-y-4 py-4">
-              {/* Search with autocomplete */}
-              <Command className="rounded-lg border shadow-md">
-                <div className="flex items-center border-b px-3">
-                  <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                  <input
+            <div className="space-y-4 pt-2">
+              {/* Search input with dropdown */}
+              <div className="relative">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    ref={inputRef}
                     placeholder="Search medicines..."
                     value={searchValue}
                     onChange={(e) => setSearchValue(e.target.value)}
-                    className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    onKeyDown={handleKeyDown}
+                    onFocus={() => searchValue.trim() && setIsDropdownOpen(true)}
+                    className="pl-10 pr-20 h-11"
                   />
                   {searchValue && (
                     <Button
-                      variant="ghost"
+                      variant="secondary"
                       size="sm"
                       onClick={handleAddCustomMedicine}
-                      className="h-8 px-2 text-xs"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8 px-3 text-xs font-medium"
                     >
-                      <Plus className="mr-1 h-3 w-3" />
+                      <Plus className="mr-1 h-3.5 w-3.5" />
                       Add
                     </Button>
                   )}
                 </div>
-                <CommandList className="max-h-48">
-                  {searchValue.trim() && filteredMedications.length === 0 && (
-                    <CommandEmpty className="py-4 text-center text-sm">
-                      No medicines found. Press &quot;Add&quot; to add custom medicine.
-                    </CommandEmpty>
-                  )}
-                  {filteredMedications.length > 0 && (
-                    <CommandGroup heading="Medicines">
-                      {filteredMedications.map((med, index) => (
-                        <CommandItem
-                          key={`${med.label}-${index}`}
-                          onSelect={() => handleSelectMedication(med)}
-                          className="cursor-pointer"
-                        >
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-medium">{med.label}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {med.dci} - {med.form}
-                            </span>
-                          </div>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  )}
-                </CommandList>
-              </Command>
+
+                {/* Dropdown results */}
+                {isDropdownOpen && filteredMedications.length > 0 && (
+                  <div 
+                    ref={dropdownRef}
+                    className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-lg shadow-lg overflow-hidden"
+                  >
+                    <ScrollArea className="max-h-64">
+                      <div className="p-1">
+                        {filteredMedications.map((med, index) => {
+                          const added = isAlreadyAdded(med.label)
+                          return (
+                            <button
+                              key={`${med.label}-${index}`}
+                              onClick={() => !added && handleSelectMedication(med)}
+                              disabled={added}
+                              className={cn(
+                                "w-full text-left px-3 py-2.5 rounded-md transition-colors flex items-start gap-3",
+                                highlightedIndex === index && !added && "bg-accent",
+                                added 
+                                  ? "opacity-50 cursor-not-allowed" 
+                                  : "hover:bg-accent cursor-pointer"
+                              )}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm text-foreground truncate">
+                                  {med.label}
+                                </p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {med.dci} - {med.form}
+                                </p>
+                              </div>
+                              {added && (
+                                <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                )}
+
+                {/* No results message */}
+                {isDropdownOpen && searchValue.trim() && filteredMedications.length === 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-lg shadow-lg p-4 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      No medicines found for &quot;{searchValue}&quot;
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Click &quot;Add&quot; to add it as a custom medicine
+                    </p>
+                  </div>
+                )}
+              </div>
 
               {/* Current medicines in slot */}
-              {selectedSlot !== null && (slotMedicines[selectedSlot]?.length || 0) > 0 && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Medicines in this slot:
-                  </p>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">
+                  Medicines in this slot:
+                </p>
+                {selectedSlot !== null && (slotMedicines[selectedSlot]?.length || 0) > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {slotMedicines[selectedSlot]?.map((medicine) => (
                       <Badge 
                         key={medicine} 
                         variant="secondary"
-                        className="pl-2 pr-1 py-1 flex items-center gap-1 bg-green-100 text-green-800"
+                        className="pl-2.5 pr-1 py-1.5 flex items-center gap-1.5 bg-green-100 text-green-800 text-sm"
                       >
                         {medicine}
                         <button
                           onClick={() => handleRemoveMedicine(medicine)}
-                          className="ml-1 rounded-full p-0.5 hover:bg-green-200 transition-colors"
+                          className="rounded-full p-0.5 hover:bg-green-200 transition-colors"
                         >
-                          <X className="h-3 w-3" />
+                          <X className="h-3.5 w-3.5" />
                         </button>
                       </Badge>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {selectedSlot !== null && (!slotMedicines[selectedSlot] || slotMedicines[selectedSlot].length === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  No medicines assigned to this slot yet.
-                </p>
-              )}
+                ) : (
+                  <p className="text-sm text-muted-foreground italic py-2">
+                    No medicines assigned yet. Search above to add medicines.
+                  </p>
+                )}
+              </div>
             </div>
           </DialogContent>
         </Dialog>
