@@ -38,7 +38,7 @@ import { PillWheel } from "@/components/pill-wheel"
 import { WeeklyMatrix } from "@/components/weekly-matrix"
 import { ScheduleSettings } from "@/components/schedule-settings"
 import { ThemeToggle } from "@/components/theme-toggle"
-import useWebSocket, { DAYS, SESSIONS, fmt } from "@/hooks/useWebSocket"
+import useWebSocket, { DAYS, SESSIONS, fmt, parse } from "@/hooks/useWebSocket"
 import { useMemo } from "react"
 
 // Patient profile data
@@ -97,7 +97,6 @@ export default function PillPalDashboard() {
   // ESP32 variables mapping
   const batteryLevel = status?.battery || 100 // Default if missing
   const currentSlot = status?.slot || 4
-  const nextDoseTime = status?.schedule?.[1] || { hour: 13, minute: 0 } // Default to Midday if none
 
   const currentDayIndex = status?.wday != null
     ? (status.wday === 0 ? 6 : status.wday - 1)
@@ -105,6 +104,21 @@ export default function PillPalDashboard() {
 
   const currentHour = new Date().getHours()
   const currentSessionIndex = currentHour < 12 ? 0 : currentHour < 20 ? 1 : 2
+
+  // --- NEW PARSED & DYNAMIC LOGIC ---
+  const rawSchedule = status?.schedule || ["08:00", "13:00", "20:00"]
+  
+  // Calculate which session is next based on current time
+  let nextSessionIndex = currentSessionIndex + 1
+  if (nextSessionIndex > 2) nextSessionIndex = 0 // Wrap around to morning
+  
+  // Safely parse the string (e.g., "13:00") into { hour: 13, minute: 0 } for the countdown
+  const nextDoseTime = typeof rawSchedule[nextSessionIndex] === "string" 
+    ? parse(rawSchedule[nextSessionIndex]) 
+    : { hour: 13, minute: 0 }
+    
+  const nextSessionName = SESSIONS[nextSessionIndex] || "Next Dose"
+  const nextSessionTimeString = rawSchedule[nextSessionIndex] || "13:00"
 
   // Transform ESP32 dispensed matrix to WeeklyMatrix format
   const weekData = useMemo(() => {
@@ -333,7 +347,7 @@ export default function PillPalDashboard() {
               </h1>
               <div className="flex flex-col items-center gap-2 sm:flex-row sm:items-center">
                 <p className="text-base text-emerald-700 dark:text-emerald-300 sm:text-lg">
-                  Next dose: <span className="font-semibold">Midday (13:00)</span>
+                  Next dose: <span className="font-semibold">{nextSessionName} ({nextSessionTimeString})</span>
                 </p>
                 <Badge 
                   variant="secondary" 
