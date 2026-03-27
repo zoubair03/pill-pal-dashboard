@@ -58,9 +58,12 @@ export function PillWheel({
   const dropdownRef = useRef<HTMLDivElement>(null)
   
   const slots = Array.from({ length: totalSlots }, (_, i) => i)
-  const radius = 140
-  const centerX = 180
-  const centerY = 180
+  
+  // Responsive sizing
+  const size = 280
+  const radius = size * 0.39
+  const centerX = size / 2
+  const centerY = size / 2
 
   // Filter medications based on search
   const filteredMedications = useMemo(() => {
@@ -149,26 +152,54 @@ export function PillWheel({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="relative flex items-center justify-center">
-        <svg width="360" height="360" viewBox="0 0 360 360" className="drop-shadow-lg">
+      <div className="relative flex items-center justify-center w-full max-w-xs mx-auto">
+        <svg 
+          viewBox={`0 0 ${size} ${size}`} 
+          className="w-full h-auto drop-shadow-xl"
+          style={{ maxWidth: size, maxHeight: size }}
+        >
+          {/* Outer glow */}
+          <defs>
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+            <linearGradient id="wheelGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="currentColor" className="text-primary/10" />
+              <stop offset="100%" stopColor="currentColor" className="text-primary/5" />
+            </linearGradient>
+          </defs>
+          
+          {/* Background circle */}
+          <circle
+            cx={centerX}
+            cy={centerY}
+            r={radius + 30}
+            fill="url(#wheelGradient)"
+            className="dark:opacity-50"
+          />
+          
           {/* Outer ring */}
           <circle
             cx={centerX}
             cy={centerY}
-            r={radius + 20}
+            r={radius + 18}
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
-            className="text-blue-200"
+            strokeWidth="1.5"
+            className="text-border"
           />
           
           {/* Inner circle background */}
           <circle
             cx={centerX}
             cy={centerY}
-            r={radius - 30}
+            r={radius - 22}
             fill="currentColor"
-            className="text-blue-50"
+            className="text-secondary/50 dark:text-secondary/30"
           />
           
           {/* Slots */}
@@ -179,6 +210,7 @@ export function PillWheel({
             const isHome = index === 0
             const isCurrent = index === currentSlot
             const hasMedicines = (slotMedicines[index]?.length || 0) > 0
+            const slotRadius = isCurrent ? 14 : 11
 
             const slotElement = (
               <g 
@@ -193,49 +225,55 @@ export function PillWheel({
                 <circle
                   cx={x}
                   cy={y}
-                  r={isCurrent ? 18 : 14}
+                  r={slotRadius}
                   fill={
                     isCurrent 
-                      ? "#2563eb" 
+                      ? "currentColor" 
                       : isHome 
-                        ? "#f0f9ff" 
+                        ? "currentColor"
                         : hasMedicines 
-                          ? "#dcfce7" 
-                          : "#e0f2fe"
+                          ? "currentColor"
+                          : "currentColor"
                   }
                   stroke={
                     isCurrent 
-                      ? "#1d4ed8" 
+                      ? "currentColor"
                       : isHome 
-                        ? "#0284c7" 
+                        ? "currentColor"
                         : hasMedicines 
-                          ? "#22c55e" 
-                          : "#7dd3fc"
+                          ? "currentColor"
+                          : "currentColor"
                   }
-                  strokeWidth={isCurrent ? 3 : 2}
+                  strokeWidth={isCurrent ? 2.5 : 1.5}
                   className={cn(
                     "transition-all duration-300",
-                    isCurrent && "drop-shadow-lg",
-                    !isHome && "hover:opacity-80"
+                    isCurrent 
+                      ? "fill-primary stroke-primary drop-shadow-lg" 
+                      : isHome 
+                        ? "fill-secondary stroke-primary/50"
+                        : hasMedicines 
+                          ? "fill-emerald-100 stroke-emerald-500 dark:fill-emerald-950 dark:stroke-emerald-500"
+                          : "fill-card stroke-border hover:stroke-primary/50"
                   )}
+                  filter={isCurrent ? "url(#glow)" : undefined}
                 />
                 
                 {/* Slot content */}
                 {isHome ? (
                   <Home
-                    x={x - 8}
-                    y={y - 8}
-                    width={16}
-                    height={16}
-                    className="text-sky-600"
-                  />
-                ) : hasMedicines ? (
-                  <Pill
                     x={x - 6}
                     y={y - 6}
                     width={12}
                     height={12}
-                    className={isCurrent ? "text-white" : "text-green-600"}
+                    className="text-primary"
+                  />
+                ) : hasMedicines ? (
+                  <Pill
+                    x={x - 5}
+                    y={y - 5}
+                    width={10}
+                    height={10}
+                    className={isCurrent ? "text-primary-foreground" : "text-emerald-600 dark:text-emerald-400"}
                   />
                 ) : (
                   <text
@@ -243,9 +281,10 @@ export function PillWheel({
                     y={y}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    fontSize={isCurrent ? 11 : 9}
+                    fontSize={isCurrent ? 9 : 7}
                     fontWeight={isCurrent ? 700 : 500}
-                    fill={isCurrent ? "white" : "#0369a1"}
+                    fill="currentColor"
+                    className={isCurrent ? "fill-primary-foreground" : "fill-muted-foreground"}
                   >
                     {index}
                   </text>
@@ -256,12 +295,11 @@ export function PillWheel({
                   <circle
                     cx={x}
                     cy={y}
-                    r={22}
+                    r={18}
                     fill="none"
-                    stroke="#3b82f6"
-                    strokeWidth="2"
-                    opacity="0.5"
-                    className="animate-pulse"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    className="text-primary/40 animate-pulse"
                   />
                 )}
               </g>
@@ -276,16 +314,16 @@ export function PillWheel({
                   </TooltipTrigger>
                   <TooltipContent 
                     side="top" 
-                    className="max-w-64 bg-background border border-border"
+                    className="max-w-64 bg-popover border border-border"
                   >
                     <div className="space-y-1.5">
-                      <p className="font-medium text-foreground text-sm">Slot {index}</p>
+                      <p className="font-medium text-popover-foreground text-sm">Slot {index}</p>
                       <div className="flex flex-wrap gap-1">
                         {slotMedicines[index]?.map((med) => (
                           <Badge 
                             key={med} 
                             variant="secondary" 
-                            className="text-xs bg-green-100 text-green-800"
+                            className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200"
                           >
                             {med}
                           </Badge>
@@ -304,34 +342,38 @@ export function PillWheel({
           <circle
             cx={centerX}
             cy={centerY}
-            r={45}
-            fill="white"
-            stroke="#bfdbfe"
-            strokeWidth="3"
+            r={35}
+            fill="currentColor"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="fill-card stroke-border"
           />
           <circle
             cx={centerX}
             cy={centerY}
-            r={35}
-            fill="#2563eb"
+            r={28}
+            fill="currentColor"
+            className="fill-primary"
           />
           <text
             x={centerX}
-            y={centerY - 8}
+            y={centerY - 6}
             textAnchor="middle"
-            fontSize="10"
-            fill="white"
+            fontSize="8"
+            fill="currentColor"
             fontWeight="500"
+            className="fill-primary-foreground/80"
           >
             SLOT
           </text>
           <text
             x={centerX}
-            y={centerY + 10}
+            y={centerY + 9}
             textAnchor="middle"
-            fontSize="18"
-            fill="white"
+            fontSize="16"
+            fill="currentColor"
             fontWeight="700"
+            className="fill-primary-foreground"
           >
             {currentSlot}
           </text>
@@ -342,7 +384,7 @@ export function PillWheel({
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Pill className="h-5 w-5 text-blue-600" />
+                <Pill className="h-5 w-5 text-primary" />
                 Slot {selectedSlot} - Assign Medicines
               </DialogTitle>
               <DialogDescription>
@@ -362,7 +404,7 @@ export function PillWheel({
                     onChange={(e) => setSearchValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     onFocus={() => searchValue.trim() && setIsDropdownOpen(true)}
-                    className="pl-10 pr-20 h-11"
+                    className="pl-10 pr-20 h-11 bg-secondary/30 border-border focus:bg-background"
                   />
                   {searchValue && (
                     <Button
@@ -381,10 +423,10 @@ export function PillWheel({
                 {isDropdownOpen && filteredMedications.length > 0 && (
                   <div 
                     ref={dropdownRef}
-                    className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-lg shadow-lg overflow-hidden"
+                    className="absolute z-50 top-full left-0 right-0 mt-1.5 bg-popover border border-border rounded-xl shadow-xl overflow-hidden"
                   >
                     <ScrollArea className="max-h-64">
-                      <div className="p-1">
+                      <div className="p-1.5">
                         {filteredMedications.map((med, index) => {
                           const added = isAlreadyAdded(med.label)
                           return (
@@ -393,7 +435,7 @@ export function PillWheel({
                               onClick={() => !added && handleSelectMedication(med)}
                               disabled={added}
                               className={cn(
-                                "w-full text-left px-3 py-2.5 rounded-md transition-colors flex items-start gap-3",
+                                "w-full text-left px-3 py-2.5 rounded-lg transition-colors flex items-start gap-3",
                                 highlightedIndex === index && !added && "bg-accent",
                                 added 
                                   ? "opacity-50 cursor-not-allowed" 
@@ -409,7 +451,7 @@ export function PillWheel({
                                 </p>
                               </div>
                               {added && (
-                                <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                                <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
                               )}
                             </button>
                           )
@@ -421,7 +463,7 @@ export function PillWheel({
 
                 {/* No results message */}
                 {isDropdownOpen && searchValue.trim() && filteredMedications.length === 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border rounded-lg shadow-lg p-4 text-center">
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1.5 bg-popover border border-border rounded-xl shadow-xl p-4 text-center">
                     <p className="text-sm text-muted-foreground">
                       No medicines found for &quot;{searchValue}&quot;
                     </p>
@@ -443,12 +485,12 @@ export function PillWheel({
                       <Badge 
                         key={medicine} 
                         variant="secondary"
-                        className="pl-2.5 pr-1 py-1.5 flex items-center gap-1.5 bg-green-100 text-green-800 text-sm"
+                        className="pl-2.5 pr-1 py-1.5 flex items-center gap-1.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 text-sm"
                       >
                         {medicine}
                         <button
                           onClick={() => handleRemoveMedicine(medicine)}
-                          className="rounded-full p-0.5 hover:bg-green-200 transition-colors"
+                          className="rounded-full p-0.5 hover:bg-emerald-200 dark:hover:bg-emerald-800 transition-colors"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>

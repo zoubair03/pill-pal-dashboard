@@ -79,39 +79,39 @@ export function WeeklyMatrix({ weekData, onManualDispense }: WeeklyMatrixProps) 
     const isClickable = status === "pending" || status === "missed"
     
     const baseClasses = cn(
-      "flex h-8 w-8 items-center justify-center rounded-full transition-all",
-      isClickable && "cursor-pointer hover:scale-110 hover:ring-2 hover:ring-offset-2"
+      "flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full transition-all",
+      isClickable && "cursor-pointer hover:scale-110 hover:ring-2 hover:ring-offset-1 sm:hover:ring-offset-2"
     )
 
     switch (status) {
       case "dispensed":
         return (
-          <div className={cn(baseClasses, "bg-green-500 text-white shadow-sm")}>
-            <Check className="h-4 w-4" />
+          <div className={cn(baseClasses, "bg-emerald-500 text-white shadow-sm shadow-emerald-500/30")}>
+            <Check className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
           </div>
         )
       case "pending":
         return (
           <div 
-            className={cn(baseClasses, "border-2 border-gray-300 text-gray-400 hover:border-blue-400 hover:ring-blue-200")}
+            className={cn(baseClasses, "border-2 border-border text-muted-foreground hover:border-primary hover:ring-primary/20 dark:border-muted-foreground/30")}
             onClick={() => handleCellClick(day, session, status)}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => e.key === "Enter" && handleCellClick(day, session, status)}
           >
-            <Circle className="h-3 w-3" />
+            <Circle className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
           </div>
         )
       case "missed":
         return (
           <div 
-            className={cn(baseClasses, "bg-red-500 text-white shadow-sm animate-pulse hover:ring-red-200")}
+            className={cn(baseClasses, "bg-red-500 text-white shadow-sm shadow-red-500/30 animate-pulse hover:ring-red-200 dark:hover:ring-red-800")}
             onClick={() => handleCellClick(day, session, status)}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => e.key === "Enter" && handleCellClick(day, session, status)}
           >
-            <AlertCircle className="h-4 w-4" />
+            <AlertCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
           </div>
         )
     }
@@ -119,52 +119,50 @@ export function WeeklyMatrix({ weekData, onManualDispense }: WeeklyMatrixProps) 
 
   return (
     <>
-      <div className="overflow-x-auto">
-        <div className="min-w-[500px]">
-          {/* Header */}
-          <div className="mb-3 grid grid-cols-8 gap-2">
-            <div className="text-sm font-medium text-muted-foreground"></div>
+      <div className="w-full">
+        {/* Header */}
+        <div className="mb-2 sm:mb-3 grid grid-cols-8 gap-1 sm:gap-2">
+          <div className="text-xs font-medium text-muted-foreground"></div>
+          {days.map((day) => (
+            <div
+              key={day}
+              className={cn(
+                "text-center text-xs sm:text-sm font-semibold",
+                day === "Thu" ? "text-primary" : "text-foreground"
+              )}
+            >
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Sessions */}
+        {sessions.map((session) => (
+          <div key={session} className="mb-1.5 sm:mb-2 grid grid-cols-8 items-center gap-1 sm:gap-2">
+            <div className="text-xs font-medium text-muted-foreground pr-1">
+              {getSessionLabel(session)}
+            </div>
             {days.map((day) => (
-              <div
-                key={day}
-                className={cn(
-                  "text-center text-sm font-semibold",
-                  day === "Thu" ? "text-blue-600" : "text-foreground"
-                )}
-              >
-                {day}
+              <div key={`${day}-${session}`} className="flex justify-center">
+                {renderStatusIcon(weekData[day][session], day, session)}
               </div>
             ))}
           </div>
+        ))}
 
-          {/* Sessions */}
-          {sessions.map((session) => (
-            <div key={session} className="mb-2 grid grid-cols-8 items-center gap-2">
-              <div className="text-xs font-medium text-muted-foreground">
-                {getSessionLabel(session)}
-              </div>
-              {days.map((day) => (
-                <div key={`${day}-${session}`} className="flex justify-center">
-                  {renderStatusIcon(weekData[day][session], day, session)}
-                </div>
-              ))}
-            </div>
-          ))}
-
-          {/* Legend */}
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <div className="h-4 w-4 rounded-full bg-green-500" />
-              <span>Dispensed</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-4 w-4 rounded-full border-2 border-gray-300" />
-              <span>Pending</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-4 w-4 rounded-full bg-red-500" />
-              <span>Missed</span>
-            </div>
+        {/* Legend */}
+        <div className="mt-3 sm:mt-4 flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <div className="h-3 w-3 sm:h-4 sm:w-4 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/30" />
+            <span>Dispensed</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="h-3 w-3 sm:h-4 sm:w-4 rounded-full border-2 border-border dark:border-muted-foreground/30" />
+            <span>Pending</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="h-3 w-3 sm:h-4 sm:w-4 rounded-full bg-red-500 shadow-sm shadow-red-500/30" />
+            <span>Missed</span>
           </div>
         </div>
       </div>
@@ -180,7 +178,7 @@ export function WeeklyMatrix({ weekData, onManualDispense }: WeeklyMatrixProps) 
                   Manually dispense <span className="font-semibold">{selectedDose.day}</span>{" "}
                   <span className="font-semibold">{getSessionFullName(selectedDose.session)}</span> dose?
                   <br />
-                  <span className="mt-2 block text-amber-600">
+                  <span className="mt-2 block text-amber-600 dark:text-amber-400">
                     This will mark the dose as dispensed and advance the wheel.
                   </span>
                 </>
@@ -191,7 +189,7 @@ export function WeeklyMatrix({ weekData, onManualDispense }: WeeklyMatrixProps) 
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmDispense}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary hover:bg-primary/90"
             >
               Yes, Dispense
             </AlertDialogAction>
