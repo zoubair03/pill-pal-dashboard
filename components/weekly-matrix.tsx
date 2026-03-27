@@ -86,7 +86,7 @@ export function WeeklyMatrix({ weekData, onManualDispense }: WeeklyMatrixProps) 
     switch (status) {
       case "dispensed":
         return (
-          <div className={cn(baseClasses, "bg-emerald-500 text-white shadow-sm shadow-emerald-500/30")}>
+          <div className={cn(baseClasses, "bg-emerald-500 text-white shadow-sm shadow-emerald-500/30")} aria-label="Dispensed">
             <Check className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
           </div>
         )
@@ -98,6 +98,7 @@ export function WeeklyMatrix({ weekData, onManualDispense }: WeeklyMatrixProps) 
             role="button"
             tabIndex={0}
             onKeyDown={(e) => e.key === "Enter" && handleCellClick(day, session, status)}
+            aria-label={`Mark ${day} ${getSessionFullName(session)} dose as dispensed`}
           >
             <Circle className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
           </div>
@@ -110,6 +111,7 @@ export function WeeklyMatrix({ weekData, onManualDispense }: WeeklyMatrixProps) 
             role="button"
             tabIndex={0}
             onKeyDown={(e) => e.key === "Enter" && handleCellClick(day, session, status)}
+            aria-label={`Mark missed ${day} ${getSessionFullName(session)} dose as dispensed`}
           >
             <AlertCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
           </div>

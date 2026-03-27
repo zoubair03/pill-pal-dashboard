@@ -157,6 +157,8 @@ export function PillWheel({
           viewBox={`0 0 ${size} ${size}`} 
           className="w-full h-auto drop-shadow-xl"
           style={{ maxWidth: size, maxHeight: size }}
+          role="img"
+          aria-label="Interactive pill wheel"
         >
           {/* Outer glow */}
           <defs>
@@ -216,10 +218,22 @@ export function PillWheel({
               <g 
                 key={slot} 
                 onClick={() => handleSlotClick(index)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    handleSlotClick(index)
+                  }
+                }}
                 className={cn(
                   !isHome && "cursor-pointer",
-                  "transition-transform"
+                  "transition-transform",
+                  "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background"
                 )}
+                {...(!isHome && {
+                  role: "button",
+                  tabIndex: 0,
+                  "aria-label": `Slot ${index}`
+                })}
               >
                 {/* Slot circle */}
                 <circle
@@ -380,7 +394,7 @@ export function PillWheel({
         </svg>
 
         {/* Medicine Assignment Dialog */}
-        <Dialog open={selectedSlot !== null} onOpenChange={(open) => !open && setSelectedSlot(null)}>
+        <Dialog open={selectedSlot !== null} onOpenChange={(open: boolean) => !open && setSelectedSlot(null)}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">

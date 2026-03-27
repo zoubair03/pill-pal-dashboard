@@ -36,8 +36,10 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { PillWheel } from "@/components/pill-wheel"
 import { WeeklyMatrix } from "@/components/weekly-matrix"
-import { ScheduleSheet } from "@/components/schedule-sheet"
+import { ScheduleSettings } from "@/components/schedule-settings"
 import { ThemeToggle } from "@/components/theme-toggle"
+import useWebSocket, { DAYS, SESSIONS, fmt } from "@/hooks/useWebSocket"
+import { useMemo } from "react"
 
 // Patient profile data
 const patientProfile = {
@@ -51,48 +53,7 @@ const patientProfile = {
   avatar: "",
 }
 
-// Initial medicine assignments for slots
-const initialSlotMedicines: Record<number, string[]> = {
-  1: ["Aspirin", "Vitamin D"],
-  2: ["Metformin"],
-  3: ["Lisinopril", "Atorvastatin"],
-  4: ["Aspirin"],
-}
-
-type DoseStatus = "dispensed" | "pending" | "missed"
-
-interface DoseSession {
-  morning: DoseStatus
-  midday: DoseStatus
-  evening: DoseStatus
-}
-
-interface ActivityLogEntry {
-  id: string
-  type: "dispensed" | "manual" | "missed" | "reset"
-  message: string
-  timeLabel: string
-}
-
-const initialWeekData: Record<string, DoseSession> = {
-  Mon: { morning: "dispensed", midday: "dispensed", evening: "dispensed" },
-  Tue: { morning: "dispensed", midday: "dispensed", evening: "dispensed" },
-  Wed: { morning: "dispensed", midday: "dispensed", evening: "missed" },
-  Thu: { morning: "dispensed", midday: "pending", evening: "pending" },
-  Fri: { morning: "pending", midday: "pending", evening: "pending" },
-  Sat: { morning: "pending", midday: "pending", evening: "pending" },
-  Sun: { morning: "pending", midday: "pending", evening: "pending" },
-}
-
-const emptyWeekData: Record<string, DoseSession> = {
-  Mon: { morning: "pending", midday: "pending", evening: "pending" },
-  Tue: { morning: "pending", midday: "pending", evening: "pending" },
-  Wed: { morning: "pending", midday: "pending", evening: "pending" },
-  Thu: { morning: "pending", midday: "pending", evening: "pending" },
-  Fri: { morning: "pending", midday: "pending", evening: "pending" },
-  Sat: { morning: "pending", midday: "pending", evening: "pending" },
-  Sun: { morning: "pending", midday: "pending", evening: "pending" },
-}
+const WS_URL = "ws://192.168.1.38:81"
 
 function formatCountdown(targetHour: number, targetMinute: number): string {
   const now = new Date()
@@ -123,41 +84,66 @@ function formatTime(date: Date): string {
 }
 
 export default function PillPalDashboard() {
-  const [isOffline, setIsOffline] = useState(false)
-  const [isDispensing, setIsDispensing] = useState(false)
-  const [weekData, setWeekData] = useState<Record<string, DoseSession>>(initialWeekData)
-  const [countdown, setCountdown] = useState("")
-  const [slotMedicines, setSlotMedicines] = useState<Record<number, string[]>>(initialSlotMedicines)
-  const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([
-    {
-      id: "1",
-      type: "dispensed",
-      message: "Midday dose dispensed at 13:02",
-      timeLabel: "13:02",
-    },
-    {
-      id: "2",
-      type: "manual",
-      message: "Manual dispense triggered at 10:15",
-      timeLabel: "10:15",
-    },
-    {
-      id: "3",
-      type: "dispensed",
-      message: "Morning dose dispensed at 08:00",
-      timeLabel: "08:00",
-    },
-    {
-      id: "4",
-      type: "missed",
-      message: "Evening dose missed - Wed",
-      timeLabel: "Yesterday",
-    },
-  ])
+  const { connected, status, alerts, history, send, dismissAlert, clearHistory } = useWebSocket(WS_URL) as any
 
-  const batteryLevel = 85
-  const currentSlot = 4
-  const nextDoseTime = { hour: 13, minute: 0 }
+  const isOffline = !connected
+  const [isDispensing, setIsDispensing] = useState(false)
+  const [countdown, setCountdown] = useState("")
+  // Hardware slots assigned medicines mapping (not yet synced to ESP32 by default)
+  const [slotMedicines, setSlotMedicines] = useState<Record<number, string[]>>({
+    1: ["Aspirin", "Vitamin D"], 2: ["Metformin"], 3: ["Lisinopril", "Atorvastatin"], 4: ["Aspirin"]
+  })
+
+  // ESP32 variables mapping
+  const batteryLevel = status?.battery || 100 // Default if missing
+  const currentSlot = status?.slot || 4
+  const nextDoseTime = status?.schedule?.[1] || { hour: 13, minute: 0 } // Default to Midday if none
+
+  const currentDayIndex = status?.wday != null
+    ? (status.wday === 0 ? 6 : status.wday - 1)
+    : (new Date().getDay() === 0 ? 6 : new Date().getDay() - 1)
+
+  const currentHour = new Date().getHours()
+  const currentSessionIndex = currentHour < 12 ? 0 : currentHour < 20 ? 1 : 2
+
+  // Transform ESP32 dispensed matrix to WeeklyMatrix format
+  const weekData = useMemo(() => {
+    const daysShort = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    const sessionKeys = ["morning", "midday", "evening"] as const
+    const data: Record<string, any> = {}
+    
+    for (let d = 0; d < 7; d++) {
+      data[daysShort[d]] = { morning: "pending", midday: "pending", evening: "pending" }
+      for (let s = 0; s < 3; s++) {
+        const isDispensed = status?.dispensed?.[d]?.[s]
+        
+        if (isDispensed) {
+          data[daysShort[d]][sessionKeys[s]] = "dispensed"
+        } else {
+          // Identify if it's theoretically a missed dose based on schedule passed
+          if (d < currentDayIndex || (d === currentDayIndex && s < currentSessionIndex)) {
+            data[daysShort[d]][sessionKeys[s]] = "missed"
+          }
+        }
+      }
+    }
+    return data
+  }, [status, currentDayIndex, currentSessionIndex])
+
+  // Transform hook history into ActivityLog
+  const activityLog = useMemo(() => {
+    if (!history || history.length === 0) return []
+    return history.map((entry: any, i: number) => ({
+      id: entry.id || String(i),
+      type: entry.kind === "dispensed" ? "dispensed" : entry.kind === "missed" ? "missed" : "manual",
+      message: entry.kind === "dispensed" 
+        ? `${SESSIONS[entry.session] || "Dose"} dispensed for ${DAYS[entry.day] || "today"}`
+        : entry.kind === "missed"
+        ? `Missed ${SESSIONS[entry.session]} dose`
+        : entry.text || `Action at ${entry.timestamp}`,
+      timeLabel: entry.timestamp || entry.date,
+    }))
+  }, [history])
 
   // Live countdown timer
   useEffect(() => {
@@ -171,37 +157,22 @@ export default function PillPalDashboard() {
     return () => clearInterval(interval)
   }, [nextDoseTime.hour, nextDoseTime.minute])
 
-  const addActivityLog = (type: ActivityLogEntry["type"], message: string) => {
-    const newEntry: ActivityLogEntry = {
-      id: Date.now().toString(),
-      type,
-      message,
-      timeLabel: formatTime(new Date()),
-    }
-    setActivityLog((prev) => [newEntry, ...prev].slice(0, 5))
-  }
-
   const handleDispense = async () => {
     setIsDispensing(true)
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    setIsDispensing(false)
-    addActivityLog("dispensed", `Midday dose dispensed at ${formatTime(new Date())}`)
+    send({ action: "dispense", day: currentDayIndex, session: currentSessionIndex })
+    setTimeout(() => setIsDispensing(false), 2000)
   }
 
-  const handleManualDispense = (day: string, session: string) => {
-    setWeekData((prev) => ({
-      ...prev,
-      [day]: {
-        ...prev[day],
-        [session]: "dispensed" as DoseStatus,
-      },
-    }))
-    addActivityLog("manual", `Manual dispense: ${day} ${session} at ${formatTime(new Date())}`)
+  const handleManualDispense = (dayShortName: string, sessionName: string) => {
+    const daysShort = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    const sessionKeys = ["morning", "midday", "evening"]
+    const day = daysShort.indexOf(dayShortName)
+    const session = sessionKeys.indexOf(sessionName)
+    send({ action: "dispense", day, session })
   }
 
   const handleResetWeek = () => {
-    setWeekData(emptyWeekData)
-    addActivityLog("reset", `Week reset at ${formatTime(new Date())}`)
+    send({ action: "reset" })
   }
 
   const handleUpdateSlotMedicines = (slot: number, medicines: string[]) => {
@@ -211,7 +182,7 @@ export default function PillPalDashboard() {
     }))
   }
 
-  const getActivityIcon = (type: ActivityLogEntry["type"]) => {
+  const getActivityIcon = (type: string) => {
     switch (type) {
       case "dispensed":
         return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -219,7 +190,7 @@ export default function PillPalDashboard() {
         return <AlertTriangle className="h-4 w-4 text-amber-500" />
       case "missed":
         return <AlertTriangle className="h-4 w-4 text-red-500" />
-      case "reset":
+      default:
         return <RotateCcw className="h-4 w-4 text-primary" />
     }
   }
@@ -231,7 +202,11 @@ export default function PillPalDashboard() {
       
       {/* Offline Overlay */}
       {isOffline && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md"
+          role="alert"
+          aria-live="assertive"
+        >
           <div className="flex flex-col items-center gap-4 rounded-2xl bg-card p-8 shadow-2xl ring-1 ring-border">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
             <p className="text-lg font-semibold text-foreground">
@@ -250,7 +225,7 @@ export default function PillPalDashboard() {
           {/* Logo */}
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25">
-              <Pill className="h-5 w-5" />
+              <Pill className="h-5 w-5" aria-hidden="true" />
             </div>
             <span className="text-xl font-bold tracking-tight text-foreground">PillPal</span>
           </div>
@@ -265,21 +240,21 @@ export default function PillPalDashboard() {
                   : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"
               }`}
             >
-              <Battery className="h-3.5 w-3.5" />
+              <Battery className="h-3.5 w-3.5" aria-hidden="true" />
               {batteryLevel}%
             </Badge>
             <Badge
               variant="outline"
               className="hidden gap-1.5 border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 sm:flex"
             >
-              <Wifi className="h-3.5 w-3.5" />
+              <Wifi className="h-3.5 w-3.5" aria-hidden="true" />
               Connected
             </Badge>
             <Badge
               variant="outline"
               className="hidden gap-1.5 border-border bg-secondary text-secondary-foreground md:flex"
             >
-              <RefreshCw className="h-3.5 w-3.5" />
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
               Synced just now
             </Badge>
             <ThemeToggle />
@@ -288,53 +263,66 @@ export default function PillPalDashboard() {
       </header>
 
       <main className="container relative mx-auto space-y-4 px-4 py-4 sm:space-y-6 sm:py-6">
-        {/* Patient Profile Section */}
-        <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm">
-          <CardContent className="p-4 sm:py-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3 sm:gap-4">
-                <Avatar className="h-12 w-12 border-2 border-primary/20 sm:h-14 sm:w-14">
-                  <AvatarImage src={patientProfile.avatar} alt={patientProfile.name} />
-                  <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold sm:text-base">
-                    {patientProfile.name.split(" ").map(n => n[0]).join("")}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="space-y-1 min-w-0">
-                  <h2 className="text-lg font-bold text-foreground sm:text-xl truncate">{patientProfile.name}</h2>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <User className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                      {patientProfile.age}y
-                    </span>
-                    <span className="hidden items-center gap-1 xs:flex">
-                      <Calendar className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                      {new Date(patientProfile.dateOfBirth).toLocaleDateString("en-GB")}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Phone className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                      <span className="truncate max-w-24 sm:max-w-none">{patientProfile.phone}</span>
-                    </span>
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+          {/* Patient Profile Section */}
+          <div className="h-full">
+            <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm h-full flex flex-col justify-center">
+              <CardContent className="p-4 sm:py-6 flex-1 flex flex-col items-center justify-center">
+                <div className="flex flex-col items-center text-center gap-5 w-full">
+                  <Avatar className="h-20 w-20 border-4 border-background shadow-md shadow-primary/10 ring-2 ring-primary/20 sm:h-24 sm:w-24">
+                    <AvatarImage src={patientProfile.avatar} alt={patientProfile.name} />
+                    <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold sm:text-2xl">
+                      {patientProfile.name.split(" ").map(n => n[0]).join("")}
+                    </AvatarFallback>
+                  </Avatar>
+                  
+                  <div className="space-y-3 w-full">
+                    <h2 className="text-xl font-bold text-foreground sm:text-2xl truncate">{patientProfile.name}</h2>
+                    <div className="flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground sm:flex-row sm:gap-4">
+                      <span className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
+                        <User className="h-4 w-4 text-primary/70" />
+                        {patientProfile.age}y
+                      </span>
+                      <span className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
+                        <Calendar className="h-4 w-4 text-primary/70" />
+                        {new Date(patientProfile.dateOfBirth).toLocaleDateString("en-GB")}
+                      </span>
+                      <span className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
+                        <Phone className="h-4 w-4 text-primary/70" />
+                        <span>{patientProfile.phone}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                    {patientProfile.conditions.map((condition) => (
+                      <Badge key={condition} variant="default" className="bg-primary/15 text-primary hover:bg-primary/25 border-primary/20 border transition-colors shadow-sm">
+                        {condition}
+                      </Badge>
+                    ))}
+                    {patientProfile.allergies.map((allergy) => (
+                      <Badge key={allergy} variant="destructive" className="bg-red-500/15 text-red-600 dark:text-red-400 hover:bg-red-500/25 border-red-500/20 border transition-colors shadow-sm">
+                        Allergy: {allergy}
+                      </Badge>
+                    ))}
                   </div>
                 </div>
-              </div>
-              <div className="flex flex-wrap gap-1.5 sm:gap-2 sm:justify-end">
-                {patientProfile.conditions.map((condition) => (
-                  <Badge key={condition} variant="secondary" className="bg-primary/10 text-primary text-xs">
-                    {condition}
-                  </Badge>
-                ))}
-                {patientProfile.allergies.map((allergy) => (
-                  <Badge key={allergy} variant="destructive" className="bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400 text-xs">
-                    Allergy: {allergy}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </div>
 
-        {/* Hero Section - Immediate Status */}
-        <Card className="overflow-hidden border-emerald-200/50 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-xl shadow-emerald-500/10 dark:border-emerald-800/30 dark:from-emerald-950/50 dark:to-teal-950/50">
+          {/* Schedule Settings Inline */}
+          <div className="h-full">
+            <ScheduleSettings 
+              scheduleData={status?.schedule} 
+              onSave={(parsed) => send({ action: "setschedule", schedule: parsed })}
+              disabled={isOffline}
+            />
+          </div>
+        </div>
+
+      {/* Hero Section - Immediate Status */}
+      <Card className="overflow-hidden border-emerald-200/50 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-xl shadow-emerald-500/10 dark:border-emerald-800/30 dark:from-emerald-950/50 dark:to-teal-950/50">
           <CardContent className="flex flex-col items-center gap-4 p-4 text-center sm:flex-row sm:gap-6 sm:p-6 sm:text-left">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 ring-4 ring-emerald-200/50 dark:bg-emerald-900 dark:ring-emerald-800/50 sm:h-20 sm:w-20">
               <CheckCircle2 className="h-9 w-9 text-emerald-600 dark:text-emerald-400 sm:h-11 sm:w-11" />
@@ -464,7 +452,6 @@ export default function PillPalDashboard() {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-                <ScheduleSheet />
               </div>
             </CardHeader>
             <CardContent className="pb-4 sm:pb-6">
@@ -485,12 +472,12 @@ export default function PillPalDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-4 sm:pb-6">
-            <div className="space-y-2 sm:space-y-3">
+            <ul className="space-y-2 sm:space-y-3">
               {activityLog.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No recent activity</p>
               ) : (
-                activityLog.map((entry) => (
-                  <div
+                activityLog.map((entry: any) => (
+                  <li
                     key={entry.id}
                     className="flex items-center gap-3 rounded-xl border border-border/50 bg-secondary/30 px-3 py-2.5 sm:px-4 sm:py-3"
                   >
@@ -499,31 +486,14 @@ export default function PillPalDashboard() {
                     <span className="text-xs text-muted-foreground">
                       {entry.timeLabel}
                     </span>
-                  </div>
+                  </li>
                 ))
               )}
-            </div>
+            </ul>
           </CardContent>
         </Card>
 
-        {/* Offline Mode Toggle (for testing) */}
-        <Card className="border-dashed border-border/50 bg-secondary/30">
-          <CardContent className="flex items-center justify-between p-4">
-            <div className="space-y-0.5">
-              <Label htmlFor="offline-toggle" className="text-xs sm:text-sm font-medium">
-                Test Offline State
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Toggle to simulate hardware disconnection
-              </p>
-            </div>
-            <Switch
-              id="offline-toggle"
-              checked={isOffline}
-              onCheckedChange={setIsOffline}
-            />
-          </CardContent>
-        </Card>
+        {/* Removed Dummy Offline Mode Toggle */}
       </main>
     </div>
   )
