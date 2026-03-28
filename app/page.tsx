@@ -52,8 +52,12 @@ const patientProfile = {
   allergies: ["Penicillin"],
   avatar: "",
 }
+//IP ESP 32 """"""""""""""""""""""""""""""""""""""""""""""""""
+const WS_URL = "ws://192.168.1.38:81"
 
-const WS_URL = "ws://10.187.249.125:81"
+function getSlotIndexFromDaySession(day: number, session: number): number {
+  return day * 3 + session + 1
+}
 
 function formatCountdown(targetHour: number, targetMinute: number): string {
   const now = new Date()
@@ -89,6 +93,8 @@ export default function PillPalDashboard() {
   const isOffline = !connected
   const isDispensing = status?.dispensing === true
   const [countdown, setCountdown] = useState("")
+  const [dispensedSlots, setDispensedSlots] = useState<number[]>([])
+
   // Hardware slots assigned medicines mapping (not yet synced to ESP32 by default)
   const [slotMedicines, setSlotMedicines] = useState<Record<number, string[]>>({
     1: ["Aspirin", "Vitamin D"], 2: ["Metformin"], 3: ["Lisinopril", "Atorvastatin"], 4: ["Aspirin"]
@@ -101,6 +107,23 @@ export default function PillPalDashboard() {
   const currentDayIndex = status?.wday != null
     ? (status.wday === 0 ? 6 : status.wday - 1)
     : (new Date().getDay() === 0 ? 6 : new Date().getDay() - 1)
+
+  useEffect(() => {
+    if (!status?.dispensed) {
+      setDispensedSlots([])
+      return
+    }
+
+    const latestSlots: number[] = []
+    for (let d = 0; d < 7; d++) {
+      for (let s = 0; s < 3; s++) {
+        if (status.dispensed[d]?.[s]) {
+          latestSlots.push(getSlotIndexFromDaySession(d, s))
+        }
+      }
+    }
+    setDispensedSlots(latestSlots)
+  }, [status?.dispensed])
 
   const currentHour = new Date().getHours()
   const currentSessionIndex = currentHour < 12 ? 0 : currentHour < 20 ? 1 : 2
@@ -197,6 +220,8 @@ export default function PillPalDashboard() {
 
   const handleDispense = async () => {
     send({ action: "dispense", day: dispenseDayIndex, session: nextSessionIndex })
+    const slot = getSlotIndexFromDaySession(dispenseDayIndex, nextSessionIndex)
+    setDispensedSlots((prev) => prev.includes(slot) ? prev : [...prev, slot])
   }
 
   const handleManualDispense = (dayShortName: string, sessionName: string) => {
@@ -205,6 +230,9 @@ export default function PillPalDashboard() {
     const day = daysShort.indexOf(dayShortName)
     const session = sessionKeys.indexOf(sessionName)
     send({ action: "dispense", day, session })
+
+    const slot = getSlotIndexFromDaySession(day, session)
+    setDispensedSlots((prev) => prev.includes(slot) ? prev : [...prev, slot])
   }
 
   const handleResetWeek = () => {
@@ -438,6 +466,7 @@ export default function PillPalDashboard() {
                   currentSlot={currentSlot}
                   slotMedicines={slotMedicines}
                   onUpdateSlotMedicines={handleUpdateSlotMedicines}
+                  dispensedSlots={dispensedSlots}
                 />
                 <div className="mt-3 text-center sm:mt-4">
                   <p className="text-xs text-muted-foreground sm:text-sm">

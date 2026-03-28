@@ -42,10 +42,12 @@ interface PillWheelProps {
   totalSlots?: number
   slotMedicines: Record<number, string[]>
   onUpdateSlotMedicines: (slot: number, medicines: string[]) => void
+  dispensedSlots?: number[]
 }
 
 export function PillWheel({ 
   currentSlot, 
+  dispensedSlots = [],
   totalSlots = 22,
   slotMedicines,
   onUpdateSlotMedicines
@@ -212,6 +214,7 @@ export function PillWheel({
             const isHome = index === 0
             const isCurrent = index === currentSlot
             const hasMedicines = (slotMedicines[index]?.length || 0) > 0
+            const isDispensed = dispensedSlots.includes(index)
             const slotRadius = isCurrent ? 18 : 14
 
             const slotElement = (
@@ -227,7 +230,8 @@ export function PillWheel({
                 className={cn(
                   !isHome && "cursor-pointer",
                   "transition-transform",
-                  "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background"
+                  "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background",
+                  !isHome && isDispensed && "opacity-80"
                 )}
                 {...(!isHome && {
                   role: "button",
@@ -265,9 +269,11 @@ export function PillWheel({
                       ? "fill-primary stroke-primary drop-shadow-lg" 
                       : isHome 
                         ? "fill-secondary stroke-primary/50"
-                        : hasMedicines 
-                          ? "fill-emerald-100 stroke-emerald-500 dark:fill-emerald-950 dark:stroke-emerald-500"
-                          : "fill-card stroke-border hover:stroke-primary/50"
+                        : isDispensed
+                          ? "fill-emerald-500/80 stroke-emerald-600"
+                          : hasMedicines 
+                            ? "fill-emerald-100 stroke-emerald-500 dark:fill-emerald-950 dark:stroke-emerald-500"
+                            : "fill-card stroke-border hover:stroke-primary/50"
                   )}
                   filter={isCurrent ? "url(#glow)" : undefined}
                 />
@@ -280,6 +286,14 @@ export function PillWheel({
                     width={16}
                     height={16}
                     className="text-primary"
+                  />
+                ) : isDispensed ? (
+                  <Check
+                    x={x - 6}
+                    y={y - 6}
+                    width={12}
+                    height={12}
+                    className="text-white"
                   />
                 ) : hasMedicines ? (
                   <Pill
