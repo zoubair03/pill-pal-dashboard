@@ -40,18 +40,9 @@ import { ScheduleSettings } from "@/components/schedule-settings"
 import { ThemeToggle } from "@/components/theme-toggle"
 import useWebSocket, { DAYS, SESSIONS, fmt, parse } from "@/hooks/useWebSocket"
 import { useMemo } from "react"
+import { Settings } from "lucide-react"
 
-// Patient profile data
-const patientProfile = {
-  name: "Mohamed Ben Ali",
-  age: 65,
-  dateOfBirth: "1960-03-15",
-  phone: "+216 71 234 567",
-  emergencyContact: "+216 71 987 654",
-  conditions: ["Diabetes Type 2", "Hypertension"],
-  allergies: ["Penicillin"],
-  avatar: "",
-}
+import { ProfileSettings, PatientProfile } from "@/components/profile-settings"
 //IP ESP 32 """"""""""""""""""""""""""""""""""""""""""""""""""
 const WS_URL = "ws://localhost:81"
 
@@ -93,6 +84,15 @@ export default function PillPalDashboard() {
   const isOffline = !connected
   const isDispensing = status?.dispensing === true
   const [countdown, setCountdown] = useState("")
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
+  const [profile, setProfile] = useState<PatientProfile>({
+    name: "Mohamed Ben Ali",
+    age: 65,
+    dateOfBirth: "1960-03-15",
+    phone: "+216 71 234 567",
+    prescriptions: ["Aspirin", "Vitamin D", "Metformin"],
+    avatar: "",
+  })
   const [dispensedSlots, setDispensedSlots] = useState<number[]>([])
 
   // Hardware slots assigned medicines mapping (not yet synced to ESP32 by default)
@@ -329,43 +329,49 @@ export default function PillPalDashboard() {
         <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
           {/* Patient Profile Section */}
           <div className="h-full">
-            <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm h-full flex flex-col justify-center">
+            <Card className="relative overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm h-full flex flex-col justify-center">
+              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-background/50 hover:bg-background/80 backdrop-blur-sm shadow-sm border border-border/50" 
+                  onClick={() => setIsProfileModalOpen(true)}
+                >
+                  <Settings className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                </Button>
+              </div>
               <CardContent className="p-4 sm:py-6 flex-1 flex flex-col items-center justify-center">
                 <div className="flex flex-col items-center text-center gap-5 w-full">
                   <Avatar className="h-20 w-20 border-4 border-background shadow-md shadow-primary/10 ring-2 ring-primary/20 sm:h-24 sm:w-24">
-                    <AvatarImage src={patientProfile.avatar} alt={patientProfile.name} />
+                    <AvatarImage src={profile.avatar} alt={profile.name} />
                     <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold sm:text-2xl">
-                      {patientProfile.name.split(" ").map(n => n[0]).join("")}
+                      {profile.name.split(" ").map(n => n[0]).join("").toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
 
                   <div className="space-y-3 w-full">
-                    <h2 className="text-xl font-bold text-foreground sm:text-2xl truncate">{patientProfile.name}</h2>
+                    <h2 className="text-xl font-bold text-foreground sm:text-2xl truncate">{profile.name}</h2>
                     <div className="flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground sm:flex-row sm:gap-4">
                       <span className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
                         <User className="h-4 w-4 text-primary/70" />
-                        {patientProfile.age}y
+                        {profile.age}y
                       </span>
                       <span className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
                         <Calendar className="h-4 w-4 text-primary/70" />
-                        {new Date(patientProfile.dateOfBirth).toLocaleDateString("en-GB")}
+                        {new Date(profile.dateOfBirth).toLocaleDateString("en-GB")}
                       </span>
                       <span className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
                         <Phone className="h-4 w-4 text-primary/70" />
-                        <span>{patientProfile.phone}</span>
+                        <span>{profile.phone}</span>
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-                    {patientProfile.conditions.map((condition) => (
-                      <Badge key={condition} variant="default" className="bg-primary/15 text-primary hover:bg-primary/25 border-primary/20 border transition-colors shadow-sm">
-                        {condition}
-                      </Badge>
-                    ))}
-                    {patientProfile.allergies.map((allergy) => (
-                      <Badge key={allergy} variant="destructive" className="bg-red-500/15 text-red-600 dark:text-red-400 hover:bg-red-500/25 border-red-500/20 border transition-colors shadow-sm">
-                        Allergy: {allergy}
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1 transition-all">
+                    {profile.prescriptions.map((med) => (
+                      <Badge key={med} variant="default" className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25 border-emerald-500/20 border shadow-sm">
+                        <Pill className="h-3 w-3 mr-1.5" />
+                        {med}
                       </Badge>
                     ))}
                   </div>
@@ -464,6 +470,7 @@ export default function PillPalDashboard() {
               <div className="flex flex-col items-center">
                 <PillWheel
                   currentSlot={currentSlot}
+                  isDispensing={isDispensing}
                   slotMedicines={slotMedicines}
                   onUpdateSlotMedicines={handleUpdateSlotMedicines}
                   dispensedSlots={dispensedSlots}
@@ -561,6 +568,13 @@ export default function PillPalDashboard() {
 
         {/* Removed Dummy Offline Mode Toggle */}
       </main>
+
+      <ProfileSettings 
+        open={isProfileModalOpen} 
+        onOpenChange={setIsProfileModalOpen} 
+        profile={profile} 
+        onUpdateProfile={setProfile} 
+      />
     </div>
   )
 }
