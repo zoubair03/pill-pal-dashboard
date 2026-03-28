@@ -53,7 +53,7 @@ const patientProfile = {
   avatar: "",
 }
 
-const WS_URL = "ws://10.187.249.125:81"
+const WS_URL = "ws://localhost:81"
 
 function formatCountdown(targetHour: number, targetMinute: number): string {
   const now = new Date()
