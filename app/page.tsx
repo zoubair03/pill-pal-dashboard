@@ -53,22 +53,22 @@ const patientProfile = {
   avatar: "",
 }
 
-const WS_URL = "ws://192.168.1.38:81"
+const WS_URL = "ws://10.187.249.125:81"
 
 function formatCountdown(targetHour: number, targetMinute: number): string {
   const now = new Date()
   const target = new Date()
   target.setHours(targetHour, targetMinute, 0, 0)
-  
+
   if (target <= now) {
     target.setDate(target.getDate() + 1)
   }
-  
+
   const diffMs = target.getTime() - now.getTime()
   const diffMins = Math.floor(diffMs / 60000)
   const hours = Math.floor(diffMins / 60)
   const mins = diffMins % 60
-  
+
   if (hours > 0) {
     return `in ${hours}h ${mins}m`
   }
@@ -76,10 +76,10 @@ function formatCountdown(targetHour: number, targetMinute: number): string {
 }
 
 function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-US", { 
-    hour: "2-digit", 
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
     minute: "2-digit",
-    hour12: false 
+    hour12: false
   })
 }
 
@@ -105,32 +105,35 @@ export default function PillPalDashboard() {
   const currentHour = new Date().getHours()
   const currentSessionIndex = currentHour < 12 ? 0 : currentHour < 20 ? 1 : 2
 
-  // --- NEW PARSED & DYNAMIC LOGIC ---
-  const rawSchedule = status?.schedule || ["08:00", "13:00", "20:00"]
-  
-  // Calculate which session is next based on current time
+  // --- THE FIX: Handle the array of objects from the ESP32 ---
+  const rawSchedule = status?.schedule || [
+    { hour: 8, minute: 0 },
+    { hour: 13, minute: 0 },
+    { hour: 20, minute: 0 }
+  ]
+
   let nextSessionIndex = currentSessionIndex + 1
   if (nextSessionIndex > 2) nextSessionIndex = 0 // Wrap around to morning
-  
-  // Safely parse the string (e.g., "13:00") into { hour: 13, minute: 0 } for the countdown
-  const nextDoseTime = typeof rawSchedule[nextSessionIndex] === "string" 
-    ? parse(rawSchedule[nextSessionIndex]) 
-    : { hour: 13, minute: 0 }
-    
+
+  // The ESP32 already provides the object we need for the countdown!
+  const nextDoseTime = rawSchedule[nextSessionIndex]
+
   const nextSessionName = SESSIONS[nextSessionIndex] || "Next Dose"
-  const nextSessionTimeString = rawSchedule[nextSessionIndex] || "13:00"
+
+  // Format the object into a "HH:MM" string using your fmt() hook for the HTML
+  const nextSessionTimeString = fmt(nextDoseTime)
 
   // Transform ESP32 dispensed matrix to WeeklyMatrix format
   const weekData = useMemo(() => {
     const daysShort = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     const sessionKeys = ["morning", "midday", "evening"] as const
     const data: Record<string, any> = {}
-    
+
     for (let d = 0; d < 7; d++) {
       data[daysShort[d]] = { morning: "pending", midday: "pending", evening: "pending" }
       for (let s = 0; s < 3; s++) {
         const isDispensed = status?.dispensed?.[d]?.[s]
-        
+
         if (isDispensed) {
           data[daysShort[d]][sessionKeys[s]] = "dispensed"
         } else {
@@ -150,11 +153,11 @@ export default function PillPalDashboard() {
     return history.map((entry: any, i: number) => ({
       id: entry.id || String(i),
       type: entry.kind === "dispensed" ? "dispensed" : entry.kind === "missed" ? "missed" : "manual",
-      message: entry.kind === "dispensed" 
+      message: entry.kind === "dispensed"
         ? `${SESSIONS[entry.session] || "Dose"} dispensed for ${DAYS[entry.day] || "today"}`
         : entry.kind === "missed"
-        ? `Missed ${SESSIONS[entry.session]} dose`
-        : entry.text || `Action at ${entry.timestamp}`,
+          ? `Missed ${SESSIONS[entry.session]} dose`
+          : entry.text || `Action at ${entry.timestamp}`,
       timeLabel: entry.timestamp || entry.date,
     }))
   }, [history])
@@ -164,10 +167,10 @@ export default function PillPalDashboard() {
     const updateCountdown = () => {
       setCountdown(formatCountdown(nextDoseTime.hour, nextDoseTime.minute))
     }
-    
+
     updateCountdown()
     const interval = setInterval(updateCountdown, 1000)
-    
+
     return () => clearInterval(interval)
   }, [nextDoseTime.hour, nextDoseTime.minute])
 
@@ -213,10 +216,10 @@ export default function PillPalDashboard() {
     <div className="relative min-h-screen bg-background">
       {/* Background gradient */}
       <div className="pointer-events-none fixed inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/5 dark:from-primary/10 dark:to-primary/5" />
-      
+
       {/* Offline Overlay */}
       {isOffline && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md"
           role="alert"
           aria-live="assertive"
@@ -248,11 +251,10 @@ export default function PillPalDashboard() {
           <div className="flex items-center gap-2">
             <Badge
               variant="outline"
-              className={`hidden gap-1.5 sm:flex ${
-                batteryLevel < 20
-                  ? "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400"
-                  : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"
-              }`}
+              className={`hidden gap-1.5 sm:flex ${batteryLevel < 20
+                ? "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400"
+                : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"
+                }`}
             >
               <Battery className="h-3.5 w-3.5" aria-hidden="true" />
               {batteryLevel}%
@@ -289,7 +291,7 @@ export default function PillPalDashboard() {
                       {patientProfile.name.split(" ").map(n => n[0]).join("")}
                     </AvatarFallback>
                   </Avatar>
-                  
+
                   <div className="space-y-3 w-full">
                     <h2 className="text-xl font-bold text-foreground sm:text-2xl truncate">{patientProfile.name}</h2>
                     <div className="flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground sm:flex-row sm:gap-4">
@@ -327,16 +329,16 @@ export default function PillPalDashboard() {
 
           {/* Schedule Settings Inline */}
           <div className="h-full">
-            <ScheduleSettings 
-              scheduleData={status?.schedule} 
+            <ScheduleSettings
+              scheduleData={status?.schedule}
               onSave={(parsed) => send({ action: "setschedule", schedule: parsed })}
               disabled={isOffline}
             />
           </div>
         </div>
 
-      {/* Hero Section - Immediate Status */}
-      <Card className="overflow-hidden border-emerald-200/50 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-xl shadow-emerald-500/10 dark:border-emerald-800/30 dark:from-emerald-950/50 dark:to-teal-950/50">
+        {/* Hero Section - Immediate Status */}
+        <Card className="overflow-hidden border-emerald-200/50 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-xl shadow-emerald-500/10 dark:border-emerald-800/30 dark:from-emerald-950/50 dark:to-teal-950/50">
           <CardContent className="flex flex-col items-center gap-4 p-4 text-center sm:flex-row sm:gap-6 sm:p-6 sm:text-left">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 ring-4 ring-emerald-200/50 dark:bg-emerald-900 dark:ring-emerald-800/50 sm:h-20 sm:w-20">
               <CheckCircle2 className="h-9 w-9 text-emerald-600 dark:text-emerald-400 sm:h-11 sm:w-11" />
@@ -349,8 +351,8 @@ export default function PillPalDashboard() {
                 <p className="text-base text-emerald-700 dark:text-emerald-300 sm:text-lg">
                   Next dose: <span className="font-semibold">{nextSessionName} ({nextSessionTimeString})</span>
                 </p>
-                <Badge 
-                  variant="secondary" 
+                <Badge
+                  variant="secondary"
                   className="gap-1 bg-emerald-200/70 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-800 dark:text-emerald-200"
                 >
                   <Clock className="h-3 w-3" />
@@ -413,8 +415,8 @@ export default function PillPalDashboard() {
             </CardHeader>
             <CardContent className="pb-4 sm:pb-6">
               <div className="flex flex-col items-center">
-                <PillWheel 
-                  currentSlot={currentSlot} 
+                <PillWheel
+                  currentSlot={currentSlot}
                   slotMedicines={slotMedicines}
                   onUpdateSlotMedicines={handleUpdateSlotMedicines}
                 />
@@ -469,8 +471,8 @@ export default function PillPalDashboard() {
               </div>
             </CardHeader>
             <CardContent className="pb-4 sm:pb-6">
-              <WeeklyMatrix 
-                weekData={weekData} 
+              <WeeklyMatrix
+                weekData={weekData}
                 onManualDispense={handleManualDispense}
               />
             </CardContent>
