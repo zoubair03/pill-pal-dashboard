@@ -60,7 +60,7 @@ export function PillWheel({
   const slots = Array.from({ length: totalSlots }, (_, i) => i)
   
   // Responsive sizing
-  const size = 280
+  const size = 380
   const radius = size * 0.39
   const centerX = size / 2
   const centerY = size / 2
@@ -152,7 +152,7 @@ export function PillWheel({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="relative flex items-center justify-center w-full max-w-xs mx-auto">
+      <div className="relative flex items-center justify-center w-full max-w-sm sm:max-w-md mx-auto pb-4">
         <svg 
           viewBox={`0 0 ${size} ${size}`} 
           className="w-full h-auto drop-shadow-xl"
@@ -212,7 +212,7 @@ export function PillWheel({
             const isHome = index === 0
             const isCurrent = index === currentSlot
             const hasMedicines = (slotMedicines[index]?.length || 0) > 0
-            const slotRadius = isCurrent ? 14 : 11
+            const slotRadius = isCurrent ? 18 : 14
 
             const slotElement = (
               <g 
@@ -275,18 +275,18 @@ export function PillWheel({
                 {/* Slot content */}
                 {isHome ? (
                   <Home
-                    x={x - 6}
-                    y={y - 6}
-                    width={12}
-                    height={12}
+                    x={x - 8}
+                    y={y - 8}
+                    width={16}
+                    height={16}
                     className="text-primary"
                   />
                 ) : hasMedicines ? (
                   <Pill
-                    x={x - 5}
-                    y={y - 5}
-                    width={10}
-                    height={10}
+                    x={x - 7}
+                    y={y - 7}
+                    width={14}
+                    height={14}
                     className={isCurrent ? "text-primary-foreground" : "text-emerald-600 dark:text-emerald-400"}
                   />
                 ) : (
@@ -295,8 +295,8 @@ export function PillWheel({
                     y={y}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    fontSize={isCurrent ? 9 : 7}
-                    fontWeight={isCurrent ? 700 : 500}
+                    fontSize={isCurrent ? 12 : 10}
+                    fontWeight={isCurrent ? 700 : 600}
                     fill="currentColor"
                     className={isCurrent ? "fill-primary-foreground" : "fill-muted-foreground"}
                   >
@@ -309,7 +309,7 @@ export function PillWheel({
                   <circle
                     cx={x}
                     cy={y}
-                    r={18}
+                    r={24}
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="1.5"
@@ -356,7 +356,7 @@ export function PillWheel({
           <circle
             cx={centerX}
             cy={centerY}
-            r={35}
+            r={48}
             fill="currentColor"
             stroke="currentColor"
             strokeWidth="2"
@@ -365,26 +365,26 @@ export function PillWheel({
           <circle
             cx={centerX}
             cy={centerY}
-            r={28}
+            r={38}
             fill="currentColor"
             className="fill-primary"
           />
           <text
             x={centerX}
-            y={centerY - 6}
+            y={centerY - 10}
             textAnchor="middle"
-            fontSize="8"
+            fontSize="10"
             fill="currentColor"
-            fontWeight="500"
-            className="fill-primary-foreground/80"
+            fontWeight="600"
+            className="fill-primary-foreground/80 tracking-wider"
           >
             SLOT
           </text>
           <text
             x={centerX}
-            y={centerY + 9}
+            y={centerY + 12}
             textAnchor="middle"
-            fontSize="16"
+            fontSize="24"
             fill="currentColor"
             fontWeight="700"
             className="fill-primary-foreground"

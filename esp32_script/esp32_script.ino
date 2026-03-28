@@ -187,24 +187,24 @@ void dispense(int targetSlot, int dayIndex, int sessionIndex) {
     delay(100);
   }
 
-  // Mark as dispensed
+  // Mark as dispensed and send alert
   if (dayIndex >= 0 && dayIndex < 7 && sessionIndex >= 0 && sessionIndex < 3) {
     dispensed[dayIndex][sessionIndex] = true;
+
+    // Send a separate alert event
+    StaticJsonDocument<128> alert;
+    alert["type"]    = "dispensed";
+    alert["slot"]    = targetSlot;
+    alert["day"]     = dayIndex;
+    alert["session"] = sessionIndex;
+    String alertJson;
+    serializeJson(alert, alertJson);
+    webSocket.broadcastTXT(alertJson);
   }
 
   dispensing = false;
   Serial.printf("[Dispenser] Done — slot %d dispensed\n", targetSlot);
   broadcastStatus();
-
-  // Send a separate alert event
-  StaticJsonDocument<128> alert;
-  alert["type"]    = "dispensed";
-  alert["slot"]    = targetSlot;
-  alert["day"]     = dayIndex;
-  alert["session"] = sessionIndex;
-  String alertJson;
-  serializeJson(alert, alertJson);
-  webSocket.broadcastTXT(alertJson);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -248,9 +248,8 @@ void onWebSocketEvent(uint8_t clientNum, WStype_t type, uint8_t* payload, size_t
       // Reset dispensed grid: { "action": "reset" }
       else if (strcmp(action, "reset") == 0) {
         memset(dispensed, 0, sizeof(dispensed));
-        currentSlot = 0; // Synchronize physical refill home position
-        Serial.println("[WS] Dispensed grid reset and slot zeroed");
-        broadcastStatus();
+        Serial.println("[WS] Dispensed grid reset. Returning to home (slot 0).");
+        dispense(0, -1, -1); // Physically spin the motor to slot 0
       }
 
       // Set schedule: { "action": "setschedule", "schedule": [{"hour":8,"minute":30},{"hour":13,"minute":0},{"hour":21,"minute":0}] }
