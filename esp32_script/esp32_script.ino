@@ -1,27 +1,23 @@
 /*
   ============================================================
   Weekly Pill Dispenser — ESP32 WROOM + 28BYJ-48 + ULN2003
-  + WebSocket Server for React Dashboard
+  + HTTPClient HTTP API for Next.js / Supabase
   ============================================================
   Install via Arduino Library Manager:
-    - "WebSockets" by Markus Sattler  (search: WebSockets)
-    - "ArduinoJson" by Benoit Blanchon (search: ArduinoJson)
-
-  Wiring (ULN2003 → ESP32):
-    IN1 → GPIO 19 | IN2 → GPIO 18 | IN3 → GPIO 5 | IN4 → GPIO 17
-    VCC → 5V external | GND → GND (shared with ESP32)
-  ============================================================
+    - "ArduinoJson" by Benoit Blanchon
 */
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WebSocketsServer.h>
+#include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "time.h"
 
-// ── WiFi Credentials ──────────────────────────────────────
+// ── Configuration ─────────────────────────────────────────
 const char* WIFI_SSID        = "mahdi";
 const char* WIFI_PASSWORD    = "mahdi1818";
+const char* API_URL_DISPENSE = "http://192.168.1.100:3000/api/dispense"; // CHANGE THIS TO YOUR LAPTOP IP
+const char* API_URL_PING     = "http://192.168.1.100:3000/api/ping";     // CHANGE THIS TO YOUR LAPTOP IP
 
 // ── NTP Settings ──────────────────────────────────────────
 const char* NTP_SERVER          = "pool.ntp.org";
@@ -40,32 +36,27 @@ const int   DAYLIGHT_OFFSET_SEC = 0;
 #define NUM_SLOTS       22
 #define STEPS_PER_SLOT  (STEPS_PER_REV / NUM_SLOTS)
 
-// ── Half-step sequence ────────────────────────────────────
 const int stepSequence[8][4] = {
   {1,0,0,0},{1,1,0,0},{0,1,0,0},{0,1,1,0},
   {0,0,1,0},{0,0,1,1},{0,0,0,1},{1,0,0,1}
 };
 
-// ── Schedule ──────────────────────────────────────────────
+// ── Schedule (Local Fallback) ─────────────────────────────
 struct DispenseTime { int hour; int minute; };
 DispenseTime schedule[3] = {
   { 9,  0},  // Morning
-  {12,  0},  // Midday
+  {13,  0},  // Midday
   {20,  0}   // Night
 };
 
 // ── State ─────────────────────────────────────────────────
 int  currentSlot       = 0;
 bool wifiConnected     = false;
-bool dispensing        = false;
 int  lastDispensedHour = -1;
 int  lastDispensedDay  = -1;
+String macAddress      = "";
 
-// dispensed[dayIndex][session] — true if that slot was dispensed this week
 bool dispensed[7][3] = {};
-
-// ── WebSocket Server on port 81 ───────────────────────────
-WebSocketsServer webSocket = WebSocketsServer(81);
 
 // ─────────────────────────────────────────────────────────
 // Stepper helpers
@@ -100,11 +91,8 @@ void advanceOneSlot() {
   Serial.printf("[Stepper] Moved to slot %d\n", currentSlot);
 }
 
-// ─────────────────────────────────────────────────────────
-// Day / Slot helpers
-// ─────────────────────────────────────────────────────────
 int getDayIndex(int tm_wday) {
-  return (tm_wday == 0) ? 6 : (tm_wday - 1);  // Mon=0 ... Sun=6
+  return (tm_wday == 0) ? 6 : (tm_wday - 1);
 }
 
 int getTargetSlot(int dayIndex, int sessionIndex) {
@@ -112,73 +100,72 @@ int getTargetSlot(int dayIndex, int sessionIndex) {
 }
 
 // ─────────────────────────────────────────────────────────
-// Broadcast current status JSON to all WebSocket clients
+// Cloud API Methods
 // ─────────────────────────────────────────────────────────
-void broadcastStatus() {
-  struct tm timeInfo;
-  bool hasTime = getLocalTime(&timeInfo);
+void sendPingTrigger() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(API_URL_PING);
+    http.addHeader("Content-Type", "application/json");
 
-  DynamicJsonDocument doc(2048);
-  doc["type"]        = "status";
-  doc["currentSlot"] = currentSlot;
-  doc["dispensing"]  = dispensing;
-  doc["wifi"]        = (WiFi.status() == WL_CONNECTED);
-  doc["ip"]          = WiFi.localIP().toString();
-
-  if (hasTime) {
-    char timeBuf[20];
-    strftime(timeBuf, sizeof(timeBuf), "%H:%M:%S", &timeInfo);
-    doc["time"]   = timeBuf;
-    doc["wday"]   = timeInfo.tm_wday;
-    doc["hour"]   = timeInfo.tm_hour;
-    doc["minute"] = timeInfo.tm_min;
-
-    // Next dose calculation (uses live schedule)
-    int nowMinutes = timeInfo.tm_hour * 60 + timeInfo.tm_min;
-    int nextMins = -1;
-    int nextSession = -1;
-    for (int s = 0; s < 3; s++) {
-      int sm = schedule[s].hour * 60 + schedule[s].minute;
-      if (sm > nowMinutes) { nextMins = sm; nextSession = s; break; }
+    String payload = "{\"mac_address\":\"" + macAddress + "\",\"battery_level\":100}";
+    int code = http.POST(payload);
+    
+    if (code > 0) {
+      Serial.printf("[Cloud] Heartbeat Sent (Code: %d)\n", code);
+      String response = http.getString();
+      
+      // Parse JSON
+      StaticJsonDocument<512> doc;
+      DeserializationError err = deserializeJson(doc, response);
+      if (!err) {
+         // Sync schedule
+         JsonArray schedArr = doc["schedule"];
+         if (schedArr.size() == 3) {
+            for (int i=0; i<3; i++) {
+               schedule[i].hour = schedArr[i]["hour"] | schedule[i].hour;
+               schedule[i].minute = schedArr[i]["minute"] | schedule[i].minute;
+            }
+         }
+         
+         // Motor reset command
+         if (doc["current_slot"] == 0 && currentSlot != 0) {
+            Serial.println("\n[Cloud] Remote REST Command: Reset Motor to Slot 0!");
+            memset(dispensed, 0, sizeof(dispensed));
+            lastDispensedHour = -1; lastDispensedDay = -1;
+            int stepsNeeded = (0 - currentSlot + NUM_SLOTS) % NUM_SLOTS;
+            for (int i = 0; i < stepsNeeded; i++) advanceOneSlot();
+            currentSlot = 0;
+         }
+      }
+    } else {
+      Serial.printf("[Cloud] Heartbeat Failed (Code: %d)\n", code);
     }
-    if (nextMins == -1) {
-      nextMins    = schedule[0].hour * 60 + schedule[0].minute;
-      nextSession = 0;
-    }
-    doc["nextDoseMinutes"]  = nextMins;
-    doc["nextSession"]      = nextSession;
-    doc["minutesUntilNext"] = (nextMins > nowMinutes)
-                               ? (nextMins - nowMinutes)
-                               : (nextMins + 24*60 - nowMinutes);
+    
+    http.end();
   }
+}
 
-  // Dispensed grid [7 days][3 sessions]
-  JsonArray grid = doc.createNestedArray("dispensed");
-  for (int d = 0; d < 7; d++) {
-    JsonArray row = grid.createNestedArray();
-    for (int s = 0; s < 3; s++) row.add(dispensed[d][s]);
+void sendDispenseToCloud(int slotValue) {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(API_URL_DISPENSE);
+    http.addHeader("Content-Type", "application/json");
+
+    String payload = "{\"mac_address\":\"" + macAddress + "\",\"slot_number\":" + String(slotValue) + "}";
+    int code = http.POST(payload);
+    
+    if (code > 0) Serial.printf("[Cloud] Dispense Logged in Supabase (Code: %d)\n", code);
+    else Serial.printf("[Cloud] Dispense Logging Failed (Code: %d)\n", code);
+    
+    http.end();
   }
-
-  // Current schedule
-  JsonArray sched = doc.createNestedArray("schedule");
-  for (int s = 0; s < 3; s++) {
-    JsonObject t = sched.createNestedObject();
-    t["hour"]   = schedule[s].hour;
-    t["minute"] = schedule[s].minute;
-  }
-
-  String json;
-  serializeJson(doc, json);
-  webSocket.broadcastTXT(json);
 }
 
 // ─────────────────────────────────────────────────────────
-// Dispense logic
+// Dispense execution
 // ─────────────────────────────────────────────────────────
 void dispense(int targetSlot, int dayIndex, int sessionIndex) {
-  dispensing = true;
-  broadcastStatus();
-
   int stepsNeeded = (targetSlot - currentSlot + NUM_SLOTS) % NUM_SLOTS;
   Serial.printf("[Dispenser] Moving %d slot(s) → slot %d\n", stepsNeeded, targetSlot);
 
@@ -187,104 +174,18 @@ void dispense(int targetSlot, int dayIndex, int sessionIndex) {
     delay(100);
   }
 
-  // Mark as dispensed and send alert
   if (dayIndex >= 0 && dayIndex < 7 && sessionIndex >= 0 && sessionIndex < 3) {
     dispensed[dayIndex][sessionIndex] = true;
-
-    // Send a separate alert event
-    StaticJsonDocument<128> alert;
-    alert["type"]    = "dispensed";
-    alert["slot"]    = targetSlot;
-    alert["day"]     = dayIndex;
-    alert["session"] = sessionIndex;
-    String alertJson;
-    serializeJson(alert, alertJson);
-    webSocket.broadcastTXT(alertJson);
   }
 
-  dispensing = false;
   Serial.printf("[Dispenser] Done — slot %d dispensed\n", targetSlot);
-  broadcastStatus();
+  
+  // Instantly alert the cloud API to record event in Postgres
+  sendDispenseToCloud(targetSlot);
 }
 
 // ─────────────────────────────────────────────────────────
-// WebSocket event handler
-// ─────────────────────────────────────────────────────────
-void onWebSocketEvent(uint8_t clientNum, WStype_t type, uint8_t* payload, size_t length) {
-  switch (type) {
-
-    case WStype_CONNECTED:
-      Serial.printf("[WS] Client #%d connected\n", clientNum);
-      broadcastStatus();  // send full state on connect
-      break;
-
-    case WStype_DISCONNECTED:
-      Serial.printf("[WS] Client #%d disconnected\n", clientNum);
-      break;
-
-    case WStype_TEXT: {
-      StaticJsonDocument<512> cmd;
-      DeserializationError err = deserializeJson(cmd, payload, length);
-      if (err) { Serial.println("[WS] Bad JSON"); break; }
-
-      const char* action = cmd["action"];
-
-      // Manual dispense: { "action": "dispense", "day": 0, "session": 1 }
-      if (strcmp(action, "dispense") == 0) {
-        int day     = cmd["day"]     | -1;
-        int session = cmd["session"] | -1;
-        if (day >= 0 && day < 7 && session >= 0 && session < 3) {
-          int slot = getTargetSlot(day, session);
-          Serial.printf("[WS] Manual dispense → day=%d session=%d slot=%d\n", day, session, slot);
-          dispense(slot, day, session);
-        }
-      }
-
-      // Ping: { "action": "ping" }
-      else if (strcmp(action, "ping") == 0) {
-        broadcastStatus();
-      }
-
-      // Reset dispensed grid: { "action": "reset" }
-      else if (strcmp(action, "reset") == 0) {
-        memset(dispensed, 0, sizeof(dispensed));
-        Serial.println("[WS] Dispensed grid reset. Returning to home (slot 0).");
-        dispense(0, -1, -1); // Physically spin the motor to slot 0
-      }
-
-      // Set schedule: { "action": "setschedule", "schedule": [{"hour":8,"minute":30},{"hour":13,"minute":0},{"hour":21,"minute":0}] }
-      else if (strcmp(action, "setschedule") == 0) {
-        JsonArray arr = cmd["schedule"].as<JsonArray>();
-        if (arr.size() == 3) {
-          for (int s = 0; s < 3; s++) {
-            int h = arr[s]["hour"]   | schedule[s].hour;
-            int m = arr[s]["minute"] | schedule[s].minute;
-            // Validate: morning < midday < night, all within 0-23h / 0-59m
-            if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
-              schedule[s].hour   = h;
-              schedule[s].minute = m;
-            }
-          }
-          Serial.printf("[WS] Schedule updated: %02d:%02d | %02d:%02d | %02d:%02d\n",
-            schedule[0].hour, schedule[0].minute,
-            schedule[1].hour, schedule[1].minute,
-            schedule[2].hour, schedule[2].minute);
-          // Reset last-dispensed guard so new times take effect today
-          lastDispensedHour = -1;
-          lastDispensedDay  = -1;
-          broadcastStatus();
-        }
-      }
-
-      break;
-    }
-
-    default: break;
-  }
-}
-
-// ─────────────────────────────────────────────────────────
-// WiFi + NTP
+// WiFi + Setup
 // ─────────────────────────────────────────────────────────
 void connectWiFi() {
   Serial.printf("[WiFi] Connecting to %s", WIFI_SSID);
@@ -297,7 +198,9 @@ void connectWiFi() {
   }
   if (WiFi.status() == WL_CONNECTED) {
     wifiConnected = true;
+    macAddress = WiFi.macAddress();
     Serial.println("\n[WiFi] Connected! IP: " + WiFi.localIP().toString());
+    Serial.println("[WiFi] MAC Address: " + macAddress);
     configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
     Serial.println("[NTP] Time synchronized.");
   } else {
@@ -305,13 +208,10 @@ void connectWiFi() {
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// Setup
-// ─────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("\n=== Weekly Pill Dispenser Starting ===");
+  Serial.println("\n=== Weekly Pill Dispenser - Cloud Edition Starting ===");
 
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
@@ -321,22 +221,16 @@ void setup() {
 
   connectWiFi();
 
-  // Start WebSocket server
-  webSocket.begin();
-  webSocket.onEvent(onWebSocketEvent);
-  Serial.println("[WS] WebSocket server started on port 81");
   Serial.println("[System] Ready.");
 }
 
 // ─────────────────────────────────────────────────────────
-// Main loop
+// Main Loop
 // ─────────────────────────────────────────────────────────
 unsigned long lastCheck     = 0;
-unsigned long lastBroadcast = 0;
+unsigned long lastPing      = 0;
 
 void loop() {
-  webSocket.loop();  // handle WebSocket events first
-
   // Reconnect WiFi if lost
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[WiFi] Lost, reconnecting...");
@@ -347,13 +241,13 @@ void loop() {
 
   unsigned long now = millis();
 
-  // Broadcast status every 10 seconds (keeps website clock live)
-  if (now - lastBroadcast > 10000) {
-    lastBroadcast = now;
-    broadcastStatus();
+  // Send a ping every 10 seconds to keep the Cloud API dashboard green!
+  if (now - lastPing > 10000) {
+    lastPing = now;
+    sendPingTrigger();
   }
 
-  // Check schedule every 30 seconds
+  // Check automated schedule every 30 seconds
   if (now - lastCheck > 30000) {
     lastCheck = now;
 
@@ -378,18 +272,8 @@ void loop() {
           Serial.printf("[Schedule] Auto-dispense: day=%d session=%d slot=%d\n",
                         dayIndex, s, targetSlot);
 
-          // Send missed-dose alert if previous slot was never dispensed
-          if (s > 0 && !dispensed[dayIndex][s-1]) {
-            StaticJsonDocument<128> missed;
-            missed["type"]    = "missed";
-            missed["day"]     = dayIndex;
-            missed["session"] = s - 1;
-            String missedJson;
-            serializeJson(missed, missedJson);
-            webSocket.broadcastTXT(missedJson);
-          }
-
           dispense(targetSlot, dayIndex, s);
+          
           lastDispensedHour = currentHour;
           lastDispensedDay  = currentWday;
         }

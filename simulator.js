@@ -1,171 +1,135 @@
-const { WebSocketServer } = require('ws');
+const http = require('http');
 
-// --- CONSTANTS MATCHING ESP32 ---
-const PORT = 81;
-const NUM_SLOTS = 22;
-const SESSIONS = ["Morning", "Midday", "Night"];
+console.log("=========================================");
+console.log("   PillPal True Hardware Simulator       ");
+console.log("=========================================");
 
-// --- INTERNAL STATE MATCHING ESP32 ---
-let state = {
-  currentSlot: 0,
-  dispensing: false,
-  wifi: true,
-  ip: "127.0.0.1 (SIMULATED)",
-  schedule: [
-    { hour: 9, minute: 0 },
-    { hour: 12, minute: 0 },
-    { hour: 20, minute: 0 }
-  ],
-  dispensed: Array(7).fill(0).map(() => [false, false, false]), // 7x3 Grid
-  lastDispensedHour: -1,
-  lastDispensedDay: -1
+const NEXT_JS_API = "localhost";
+const NEXT_JS_PORT = 3000;
+const MAC_ADDRESS = "A1:B2:C3:D4:E5:F6"; 
+
+// ── Schedule (Local Fallback exactly like ESP32) ─────────────────────────
+const schedule = [
+  { hour: 9, minute: 0 },
+  { hour: 13, minute: 0 },
+  { hour: 20, minute: 0 }
+];
+
+let currentSlot = 0;
+let lastDispensedHour = -1;
+let lastDispensedDay = -1;
+let dispensed = Array(7).fill(null).map(() => [false, false, false]);
+
+// Stepper Logic Helpers (Simulated)
+const getDayIndex = (day) => day === 0 ? 6 : (day - 1);
+const getTargetSlot = (dayIndex, sessionIndex) => 1 + (dayIndex * 3) + sessionIndex;
+
+const pingHeartbeat = () => {
+  const req = http.request({
+    hostname: NEXT_JS_API,
+    port: NEXT_JS_PORT,
+    path: '/api/ping',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  }, (res) => {
+    let responseData = '';
+    res.on('data', (chunk) => responseData += chunk);
+    res.on('end', () => {
+      try {
+        const result = JSON.parse(responseData);
+        
+        // 1. Sync schedule from cloud
+        if (result.schedule && Array.isArray(result.schedule) && result.schedule.length === 3) {
+           for (let i=0; i<3; i++) {
+             schedule[i].hour = result.schedule[i].hour;
+             schedule[i].minute = result.schedule[i].minute;
+           }
+        }
+        
+        // 2. Sync reset command
+        if (result.success && result.current_slot === 0 && currentSlot !== 0) {
+           console.log("\n[Cloud] Remote REST Command: Reset Motor to Slot 0!");
+           dispensed = Array(7).fill(null).map(() => [false, false, false]);
+           lastDispensedHour = -1; lastDispensedDay = -1;
+           currentSlot = 0;
+        }
+      } catch(e) {}
+    });
+  });
+  req.on('error', () => {}); 
+  req.write(JSON.stringify({ mac_address: MAC_ADDRESS }));
+  req.end();
 };
 
-const wss = new WebSocketServer({ port: PORT });
-console.log(`🚀 PillPal ESP32 Simulator running on ws://localhost:${PORT}`);
-
-// --- HELPER: CALCULATE NEXT DOSE (Mirrors C++ broadcastStatus) ---
-function getNextDoseInfo() {
-  const now = new Date();
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+const dispense = (targetSlot, dayIndex = -1, sessionIndex = -1) => {
+  if (dayIndex !== -1) dispensed[dayIndex][sessionIndex] = true;
   
-  let nextMins = -1;
-  let nextSession = -1;
+  const stepsNeeded = (targetSlot - currentSlot + 22) % 22;
+  console.log(`[Dispenser] Moving ${stepsNeeded} slot(s) → slot ${targetSlot}`);
+  currentSlot = targetSlot;
+  
+  const payload = JSON.stringify({ mac_address: MAC_ADDRESS, slot_number: targetSlot });
+  const req = http.request({
+    hostname: NEXT_JS_API,
+    port: NEXT_JS_PORT,
+    path: '/api/dispense',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length }
+  }, (res) => {
+    let responseData = '';
+    res.on('data', (chunk) => responseData += chunk);
+    res.on('end', () => {
+      let result = {};
+      try { result = JSON.parse(responseData); } catch(e){}
+      if (res.statusCode === 200) console.log(`[Cloud] Dispense Logged in Supabase: Slot ${targetSlot}`);
+      else console.error(`[Cloud] API Error (${res.statusCode}):`, result.error || responseData);
+    });
+  });
+  req.on('error', () => console.error(`[Cloud] Failed to connect to Next.js API. Is it running on port 3000?`));
+  req.write(payload);
+  req.end();
+};
 
+// ── Main Event Loop (matches ESP32 loop()) ────────────────────────────────
+setInterval(() => {
+  pingHeartbeat();
+  
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const currentWday = now.getDay();
+  
   for (let s = 0; s < 3; s++) {
-    let sm = state.schedule[s].hour * 60 + state.schedule[s].minute;
-    if (sm > nowMinutes) {
-      nextMins = sm;
-      nextSession = s;
+    if (currentHour === schedule[s].hour && currentMinute === schedule[s].minute) {
+      if (!(lastDispensedHour === currentHour && lastDispensedDay === currentWday)) {
+        const dayIndex = getDayIndex(currentWday);
+        const targetSlot = getTargetSlot(dayIndex, s);
+        
+        console.log(`\n[Schedule] Auto-dispense TRIGGER: day=${dayIndex} session=${s} slot=${targetSlot}`);
+        dispense(targetSlot, dayIndex, s);
+        
+        lastDispensedHour = currentHour;
+        lastDispensedDay = currentWday;
+      }
       break;
     }
   }
+}, 5000); // Heartbeat loop runs every 5 seconds
 
-  if (nextMins === -1) {
-    nextMins = state.schedule[0].hour * 60 + state.schedule[0].minute;
-    nextSession = 0;
+// ── Allow manual testing from terminal ────────────────────────────────
+const readline = require('readline').createInterface({ input: process.stdin, output: process.stdout });
+readline.on('line', (input) => {
+  if (input.trim() === 'reset') {
+    dispensed = Array(7).fill(null).map(() => [false, false, false]);
+    lastDispensedHour = -1; lastDispensedDay = -1;
+    currentSlot = 0;
+    console.log("[System] Simulator reset. Back to slot 0.");
+  } else {
+    const slot = parseInt(input.trim());
+    if (!isNaN(slot) && slot >= 0 && slot <= 21) dispense(slot);
+    else console.log("Type 0-21 to dispense, or 'reset' to clear.");
   }
-
-  const minutesUntilNext = (nextMins > nowMinutes) 
-    ? (nextMins - nowMinutes) 
-    : (nextMins + 24 * 60 - nowMinutes);
-
-  return { nextMins, nextSession, minutesUntilNext };
-}
-
-// --- CORE: BROADCAST STATUS ---
-function broadcastStatus() {
-  const now = new Date();
-  const { nextMins, nextSession, minutesUntilNext } = getNextDoseInfo();
-
-  const payload = {
-    type: "status",
-    currentSlot: state.currentSlot,
-    dispensing: state.dispensing,
-    wifi: state.wifi,
-    ip: state.ip,
-    time: now.toLocaleTimeString('en-GB'),
-    wday: now.getDay(), // 0=Sun, 1=Mon...
-    hour: now.getHours(),
-    minute: now.getMinutes(),
-    nextDoseMinutes: nextMins,
-    nextSession: nextSession,
-    minutesUntilNext: minutesUntilNext,
-    dispensed: state.dispensed,
-    schedule: state.schedule
-  };
-
-  const json = JSON.stringify(payload);
-  wss.clients.forEach(client => {
-    if (client.readyState === 1) client.send(json);
-  });
-}
-
-// --- CORE: DISPENSE LOGIC ---
-async function dispense(targetSlot, dayIndex, sessionIndex) {
-  state.dispensing = true;
-  console.log(`⚙️ Motor spinning to slot ${targetSlot}...`);
-  broadcastStatus();
-
-  // Simulate motor travel time (100ms per slot like C++ delay)
-  const steps = Math.abs(targetSlot - state.currentSlot);
-  await new Promise(resolve => setTimeout(resolve, steps * 100 + 500));
-
-  state.currentSlot = targetSlot;
-
-  if (dayIndex >= 0 && dayIndex < 7) {
-    state.dispensed[dayIndex][sessionIndex] = true;
-    
-    // Send Alert Event
-    const alert = JSON.stringify({
-      type: "dispensed",
-      slot: targetSlot,
-      day: dayIndex,
-      session: sessionIndex
-    });
-    wss.clients.forEach(c => c.send(alert));
-    console.log(`✅ Dispensed: Day ${dayIndex}, Session ${sessionIndex}`);
-  }
-
-  state.dispensing = false;
-  broadcastStatus();
-}
-
-// --- WEBSOCKET EVENT HANDLER ---
-wss.on('connection', (ws) => {
-  console.log("📱 Dashboard connected to Simulator");
-  broadcastStatus();
-
-  ws.on('message', (message) => {
-    const cmd = JSON.parse(message);
-    
-    switch (cmd.action) {
-      case "ping":
-        broadcastStatus();
-        break;
-
-      case "dispense":
-        const slot = 1 + (cmd.day * 3) + cmd.session;
-        dispense(slot, cmd.day, cmd.session);
-        break;
-
-      case "reset":
-        state.dispensed = Array(7).fill(0).map(() => [false, false, false]);
-        console.log("♻️ Grid Reset. Returning to home.");
-        dispense(0, -1, -1);
-        break;
-
-      case "setschedule":
-        state.schedule = cmd.schedule;
-        console.log("📅 Schedule Updated:", state.schedule);
-        state.lastDispensedHour = -1;
-        broadcastStatus();
-        break;
-    }
-  });
 });
 
-// --- SIMULATION LOOPS ---
-// 1. Broadcast status every 10 seconds (Matches ESP32 loop)
-setInterval(broadcastStatus, 10000);
-
-// 2. Check schedule every 30 seconds (Auto-dispense simulation)
-setInterval(() => {
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMin = now.getMinutes();
-  const currentWday = now.getDay();
-  const dayIndex = currentWday === 0 ? 6 : currentWday - 1;
-
-  state.schedule.forEach((s, index) => {
-    if (s.hour === currentHour && s.minute === currentMin) {
-      if (!(state.lastDispensedHour === currentHour && state.lastDispensedDay === currentWday)) {
-        console.log("⏰ AUTO-DISPENSE TRIGGERED");
-        const target = 1 + (dayIndex * 3) + index;
-        dispense(target, dayIndex, index);
-        state.lastDispensedHour = currentHour;
-        state.lastDispensedDay = currentWday;
-      }
-    }
-  });
-}, 30000);
+console.log(`✅ Simulator running true RTC schedule checks (${schedule.map(s => `${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}`).join(', ')})`);
+console.log(`✅ Type 'reset' to rewind motor, or 0-21 to trigger a direct slot POST.\n`);
