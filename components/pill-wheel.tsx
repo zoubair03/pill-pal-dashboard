@@ -42,10 +42,12 @@ interface PillWheelProps {
   totalSlots?: number
   slotMedicines: Record<number, string[]>
   onUpdateSlotMedicines: (slot: number, medicines: string[]) => void
+  dispensedSlots?: number[]
 }
 
 export function PillWheel({ 
   currentSlot, 
+  dispensedSlots = [],
   totalSlots = 22,
   slotMedicines,
   onUpdateSlotMedicines
@@ -60,8 +62,8 @@ export function PillWheel({
   const slots = Array.from({ length: totalSlots }, (_, i) => i)
   
   // Responsive sizing
-  const size = 380
-  const radius = size * 0.39
+  const size = 460
+  const radius = size * 0.42
   const centerX = size / 2
   const centerY = size / 2
 
@@ -212,7 +214,8 @@ export function PillWheel({
             const isHome = index === 0
             const isCurrent = index === currentSlot
             const hasMedicines = (slotMedicines[index]?.length || 0) > 0
-            const slotRadius = isCurrent ? 18 : 14
+            const isDispensed = dispensedSlots.includes(index)
+            const slotRadius = isCurrent ? 22 : 16
 
             const slotElement = (
               <g 
@@ -227,7 +230,8 @@ export function PillWheel({
                 className={cn(
                   !isHome && "cursor-pointer",
                   "transition-transform",
-                  "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background"
+                  "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background",
+                  !isHome && isDispensed && "opacity-80"
                 )}
                 {...(!isHome && {
                   role: "button",
@@ -265,9 +269,11 @@ export function PillWheel({
                       ? "fill-primary stroke-primary drop-shadow-lg" 
                       : isHome 
                         ? "fill-secondary stroke-primary/50"
-                        : hasMedicines 
-                          ? "fill-emerald-100 stroke-emerald-500 dark:fill-emerald-950 dark:stroke-emerald-500"
-                          : "fill-card stroke-border hover:stroke-primary/50"
+                        : isDispensed
+                          ? "fill-emerald-500/80 stroke-emerald-600"
+                          : hasMedicines 
+                            ? "fill-emerald-100 stroke-emerald-500 dark:fill-emerald-950 dark:stroke-emerald-500"
+                            : "fill-card stroke-border hover:stroke-primary/50"
                   )}
                   filter={isCurrent ? "url(#glow)" : undefined}
                 />
@@ -275,18 +281,26 @@ export function PillWheel({
                 {/* Slot content */}
                 {isHome ? (
                   <Home
+                    x={x - 10}
+                    y={y - 10}
+                    width={20}
+                    height={20}
+                    className="text-primary"
+                  />
+                ) : isDispensed ? (
+                  <Check
                     x={x - 8}
                     y={y - 8}
                     width={16}
                     height={16}
-                    className="text-primary"
+                    className="text-white"
                   />
                 ) : hasMedicines ? (
                   <Pill
-                    x={x - 7}
-                    y={y - 7}
-                    width={14}
-                    height={14}
+                    x={x - 8}
+                    y={y - 8}
+                    width={16}
+                    height={16}
                     className={isCurrent ? "text-primary-foreground" : "text-emerald-600 dark:text-emerald-400"}
                   />
                 ) : (
@@ -295,7 +309,7 @@ export function PillWheel({
                     y={y}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    fontSize={isCurrent ? 12 : 10}
+                    fontSize={isCurrent ? 14 : 12}
                     fontWeight={isCurrent ? 700 : 600}
                     fill="currentColor"
                     className={isCurrent ? "fill-primary-foreground" : "fill-muted-foreground"}
