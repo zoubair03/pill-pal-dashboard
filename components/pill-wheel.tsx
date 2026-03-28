@@ -62,8 +62,8 @@ export function PillWheel({
   const slots = Array.from({ length: totalSlots }, (_, i) => i)
   
   // Responsive sizing
-  const size = 380
-  const radius = size * 0.39
+  const size = 460
+  const radius = size * 0.42
   const centerX = size / 2
   const centerY = size / 2
 
@@ -215,7 +215,7 @@ export function PillWheel({
             const isCurrent = index === currentSlot
             const hasMedicines = (slotMedicines[index]?.length || 0) > 0
             const isDispensed = dispensedSlots.includes(index)
-            const slotRadius = isCurrent ? 18 : 14
+            const slotRadius = isCurrent ? 22 : 16
 
             const slotElement = (
               <g 
@@ -281,26 +281,26 @@ export function PillWheel({
                 {/* Slot content */}
                 {isHome ? (
                   <Home
-                    x={x - 8}
-                    y={y - 8}
-                    width={16}
-                    height={16}
+                    x={x - 10}
+                    y={y - 10}
+                    width={20}
+                    height={20}
                     className="text-primary"
                   />
                 ) : isDispensed ? (
                   <Check
-                    x={x - 6}
-                    y={y - 6}
-                    width={12}
-                    height={12}
+                    x={x - 8}
+                    y={y - 8}
+                    width={16}
+                    height={16}
                     className="text-white"
                   />
                 ) : hasMedicines ? (
                   <Pill
-                    x={x - 7}
-                    y={y - 7}
-                    width={14}
-                    height={14}
+                    x={x - 8}
+                    y={y - 8}
+                    width={16}
+                    height={16}
                     className={isCurrent ? "text-primary-foreground" : "text-emerald-600 dark:text-emerald-400"}
                   />
                 ) : (
@@ -309,7 +309,7 @@ export function PillWheel({
                     y={y}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    fontSize={isCurrent ? 12 : 10}
+                    fontSize={isCurrent ? 14 : 12}
                     fontWeight={isCurrent ? 700 : 600}
                     fill="currentColor"
                     className={isCurrent ? "fill-primary-foreground" : "fill-muted-foreground"}
