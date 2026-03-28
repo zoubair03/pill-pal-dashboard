@@ -25,9 +25,11 @@ interface DoseSession {
 interface WeeklyMatrixProps {
   weekData: Record<string, DoseSession>
   onManualDispense?: (day: string, session: string) => void
+  disabled?: boolean
+  currentDayIndex?: number
 }
 
-export function WeeklyMatrix({ weekData, onManualDispense }: WeeklyMatrixProps) {
+export function WeeklyMatrix({ weekData, onManualDispense, disabled, currentDayIndex }: WeeklyMatrixProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedDose, setSelectedDose] = useState<{ day: string; session: string } | null>(null)
 
@@ -61,6 +63,7 @@ export function WeeklyMatrix({ weekData, onManualDispense }: WeeklyMatrixProps) 
   }
 
   const handleCellClick = (day: string, session: string, status: DoseStatus) => {
+    if (disabled) return;
     if (status === "pending" || status === "missed") {
       setSelectedDose({ day, session })
       setDialogOpen(true)
@@ -76,11 +79,12 @@ export function WeeklyMatrix({ weekData, onManualDispense }: WeeklyMatrixProps) 
   }
 
   const renderStatusIcon = (status: DoseStatus, day: string, session: string) => {
-    const isClickable = status === "pending" || status === "missed"
+    const isClickable = !disabled && (status === "pending" || status === "missed")
     
     const baseClasses = cn(
       "flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full transition-all",
-      isClickable && "cursor-pointer hover:scale-110 hover:ring-2 hover:ring-offset-1 sm:hover:ring-offset-2"
+      isClickable && "cursor-pointer hover:scale-110 hover:ring-2 hover:ring-offset-1 sm:hover:ring-offset-2",
+      disabled && (status === "pending" || status === "missed") && "opacity-50 cursor-not-allowed"
     )
 
     switch (status) {
@@ -130,7 +134,7 @@ export function WeeklyMatrix({ weekData, onManualDispense }: WeeklyMatrixProps) 
               key={day}
               className={cn(
                 "text-center text-xs sm:text-sm font-semibold",
-                day === "Thu" ? "text-primary" : "text-foreground"
+                currentDayIndex !== undefined && days.indexOf(day) === currentDayIndex ? "text-primary" : "text-foreground"
               )}
             >
               {day}

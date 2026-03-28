@@ -87,7 +87,7 @@ export default function PillPalDashboard() {
   const { connected, status, alerts, history, send, dismissAlert, clearHistory } = useWebSocket(WS_URL) as any
 
   const isOffline = !connected
-  const [isDispensing, setIsDispensing] = useState(false)
+  const isDispensing = status?.dispensing === true
   const [countdown, setCountdown] = useState("")
   // Hardware slots assigned medicines mapping (not yet synced to ESP32 by default)
   const [slotMedicines, setSlotMedicines] = useState<Record<number, string[]>>({
@@ -95,8 +95,8 @@ export default function PillPalDashboard() {
   })
 
   // ESP32 variables mapping
-  const batteryLevel = status?.battery || 100 // Default if missing
-  const currentSlot = status?.slot || 4
+  const batteryLevel = status?.battery ?? 100 // Default if missing
+  const currentSlot = status?.currentSlot ?? 0
 
   const currentDayIndex = status?.wday != null
     ? (status.wday === 0 ? 6 : status.wday - 1)
@@ -105,20 +105,23 @@ export default function PillPalDashboard() {
   const currentHour = new Date().getHours()
   const currentSessionIndex = currentHour < 12 ? 0 : currentHour < 20 ? 1 : 2
 
-  // --- THE FIX: Handle the array of objects from the ESP32 ---
   const rawSchedule = status?.schedule || [
     { hour: 8, minute: 0 },
     { hour: 13, minute: 0 },
     { hour: 20, minute: 0 }
   ]
 
-  let nextSessionIndex = currentSessionIndex + 1
-  if (nextSessionIndex > 2) nextSessionIndex = 0 // Wrap around to morning
-
-  // The ESP32 already provides the object we need for the countdown!
+  const nextSessionIndex = status?.nextSession ?? 0
   const nextDoseTime = rawSchedule[nextSessionIndex]
-
   const nextSessionName = SESSIONS[nextSessionIndex] || "Next Dose"
+
+  // Properly determine the day index for the next dose (handle wrap-around to tomorrow morning)
+  let dispenseDayIndex = currentDayIndex
+  const timeNowMins = new Date().getHours() * 60 + new Date().getMinutes()
+  const eveningMins = rawSchedule[2].hour * 60 + rawSchedule[2].minute
+  if (timeNowMins >= eveningMins && nextSessionIndex === 0) {
+    dispenseDayIndex = (currentDayIndex + 1) % 7
+  }
 
   // Format the object into a "HH:MM" string using your fmt() hook for the HTML
   const nextSessionTimeString = fmt(nextDoseTime)
@@ -129,6 +132,18 @@ export default function PillPalDashboard() {
     const sessionKeys = ["morning", "midday", "evening"] as const
     const data: Record<string, any> = {}
 
+    // Find the first chronological dispensed dose in the week to avoid marking pre-purchase days as 'missed'
+    let firstDispensedSession = 999
+    if (status?.dispensed) {
+      for (let d = 0; d < 7; d++) {
+        for (let s = 0; s < 3; s++) {
+          if (status.dispensed[d][s] && d * 3 + s < firstDispensedSession) {
+            firstDispensedSession = d * 3 + s
+          }
+        }
+      }
+    }
+
     for (let d = 0; d < 7; d++) {
       data[daysShort[d]] = { morning: "pending", midday: "pending", evening: "pending" }
       for (let s = 0; s < 3; s++) {
@@ -137,9 +152,15 @@ export default function PillPalDashboard() {
         if (isDispensed) {
           data[daysShort[d]][sessionKeys[s]] = "dispensed"
         } else {
-          // Identify if it's theoretically a missed dose based on schedule passed
-          if (d < currentDayIndex || (d === currentDayIndex && s < currentSessionIndex)) {
-            data[daysShort[d]][sessionKeys[s]] = "missed"
+          // A dose is missed if its absolute chronological index is before the "next dose"
+          let currentRealWeekSession = dispenseDayIndex * 3 + nextSessionIndex
+          let cellWeekSession = d * 3 + s
+          
+          if (cellWeekSession < currentRealWeekSession) {
+            // Only mark as missed if it's earlier TODAY, or if it's AFTER we started dispensing this week
+            if (d === currentDayIndex || cellWeekSession > firstDispensedSession) {
+              data[daysShort[d]][sessionKeys[s]] = "missed"
+            }
           }
         }
       }
@@ -175,9 +196,7 @@ export default function PillPalDashboard() {
   }, [nextDoseTime.hour, nextDoseTime.minute])
 
   const handleDispense = async () => {
-    setIsDispensing(true)
-    send({ action: "dispense", day: currentDayIndex, session: currentSessionIndex })
-    setTimeout(() => setIsDispensing(false), 2000)
+    send({ action: "dispense", day: dispenseDayIndex, session: nextSessionIndex })
   }
 
   const handleManualDispense = (dayShortName: string, sessionName: string) => {
@@ -474,6 +493,8 @@ export default function PillPalDashboard() {
               <WeeklyMatrix
                 weekData={weekData}
                 onManualDispense={handleManualDispense}
+                disabled={isDispensing}
+                currentDayIndex={currentDayIndex}
               />
             </CardContent>
           </Card>

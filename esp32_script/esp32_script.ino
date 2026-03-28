@@ -118,7 +118,7 @@ void broadcastStatus() {
   struct tm timeInfo;
   bool hasTime = getLocalTime(&timeInfo);
 
-  StaticJsonDocument<1024> doc;
+  DynamicJsonDocument doc(2048);
   doc["type"]        = "status";
   doc["currentSlot"] = currentSlot;
   doc["dispensing"]  = dispensing;
@@ -223,7 +223,7 @@ void onWebSocketEvent(uint8_t clientNum, WStype_t type, uint8_t* payload, size_t
       break;
 
     case WStype_TEXT: {
-      StaticJsonDocument<256> cmd;
+      StaticJsonDocument<512> cmd;
       DeserializationError err = deserializeJson(cmd, payload, length);
       if (err) { Serial.println("[WS] Bad JSON"); break; }
 
@@ -248,7 +248,8 @@ void onWebSocketEvent(uint8_t clientNum, WStype_t type, uint8_t* payload, size_t
       // Reset dispensed grid: { "action": "reset" }
       else if (strcmp(action, "reset") == 0) {
         memset(dispensed, 0, sizeof(dispensed));
-        Serial.println("[WS] Dispensed grid reset");
+        currentSlot = 0; // Synchronize physical refill home position
+        Serial.println("[WS] Dispensed grid reset and slot zeroed");
         broadcastStatus();
       }
 
