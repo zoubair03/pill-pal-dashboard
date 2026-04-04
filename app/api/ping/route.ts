@@ -30,7 +30,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Failed to update device heartbeat' }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, current_slot: dev.current_slot, schedule: dev.schedule })
+    const responseObj: any = { 
+      success: true, 
+      current_slot: dev.current_slot, 
+      schedule: dev.schedule 
+    }
+
+    // Check if there's a manual Web Trigger pending
+    const fs = require('fs')
+    const path = require('path')
+    const filePath = path.join(process.cwd(), 'data', 'pending_dispense.json')
+    
+    if (fs.existsSync(filePath)) {
+       try {
+         const fileData = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+         if (Date.now() - fileData.timestamp < 30000) {
+            // Valid within the last 30 seconds
+            responseObj.force_dispense = fileData.pendingSlot
+            fs.unlinkSync(filePath) // Delete so it doesn't run twice
+         }
+       } catch (e) {
+         // ignore
+       }
+    }
+
+    return NextResponse.json(responseObj)
 
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })

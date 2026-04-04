@@ -15,21 +15,23 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
     battery_level: 100, 
     current_slot: 0, 
     last_sync: new Date().toISOString(),
-    schedule: defaultSchedule
+    schedule: defaultSchedule,
+    mac_address: ""
   })
   const [profile, setProfile] = useState<any>(null)
 
   useEffect(() => {
     // Because we don't have the user's hardcoded UUID, the hook automatically grabs the first device it finds in Supabase to start listening!
     if (!deviceId) {
-      supabase.from('devices').select('id, battery_level, current_slot, last_sync, schedule').limit(1).then(({ data }) => {
+      supabase.from('devices').select('id, battery_level, current_slot, last_sync, schedule, mac_address').limit(1).then(({ data }) => {
         if (data && data.length > 0) {
           setDeviceId(data[0].id)
           setDeviceMeta({ 
             battery_level: data[0].battery_level, 
             current_slot: data[0].current_slot, 
             last_sync: data[0].last_sync || new Date().toISOString(),
-            schedule: (data[0] as any).schedule || defaultSchedule
+            schedule: (data[0] as any).schedule || defaultSchedule,
+            mac_address: data[0].mac_address || ""
           })
         }
       })
@@ -39,12 +41,14 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
     const fetchInitialData = async () => {
       const { data: dev } = await supabase.from('devices').select('*').eq('id', deviceId).single()
       if (dev) {
-         setDeviceMeta({ 
+         setDeviceMeta(prev => ({ 
+            ...prev,
             battery_level: dev.battery_level, 
             current_slot: dev.current_slot, 
             last_sync: dev.last_sync,
-            schedule: dev.schedule || defaultSchedule
-         })
+            schedule: dev.schedule || defaultSchedule,
+            mac_address: dev.mac_address
+         }))
          
          const { data: prof } = await supabase.from('profiles').select('*').eq('id', dev.owner_id).single()
          if (prof) setProfile(prof)
@@ -89,12 +93,13 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
           setActivityLogs(prev => [uiLog, ...prev].slice(0, 5))
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'devices', filter: `id=eq.${deviceId}` }, (payload) => {
-          setDeviceMeta({ 
+          setDeviceMeta(prev => ({ 
+            ...prev,
             battery_level: payload.new.battery_level, 
             current_slot: payload.new.current_slot, 
             last_sync: payload.new.last_sync,
             schedule: payload.new.schedule || defaultSchedule
-          })
+          }))
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
           setProfile(payload.new)
@@ -110,15 +115,15 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
     await fetch("/api/reset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mac_address: "A1:B2:C3:D4:E5:F6" })
+      body: JSON.stringify({ mac_address: deviceMeta.mac_address })
     })
   }
 
   const dispenseManual = async (slot_number: number) => {
-    await fetch("/api/dispense", {
+    await fetch("/api/web_trigger", {
        method: "POST",
        headers: { "Content-Type": "application/json" },
-       body: JSON.stringify({ mac_address: "A1:B2:C3:D4:E5:F6", slot_number })
+       body: JSON.stringify({ slot_number })
     })
   }
 

@@ -9,6 +9,7 @@ const supabaseAdmin = createClient(
 export async function POST(req: Request) {
   try {
     const body = await req.json()
+    console.log(`\n\n=== INCOMING DISPENSE REQUEST ===\nMAC: ${body.mac_address}\nSLOT: ${body.slot_number}\n=================================\n\n`);
     const { mac_address, slot_number } = body
 
     if (!mac_address || slot_number === undefined) {
