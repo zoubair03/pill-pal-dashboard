@@ -90,7 +90,7 @@ export default function PillPalDashboard() {
     const checkOffline = () => {
       if (!deviceMeta?.last_sync) return
       const diffSecs = Math.floor((Date.now() - new Date(deviceMeta.last_sync).getTime()) / 1000)
-      setIsOffline(diffSecs > 10)
+      setIsOffline(diffSecs > 30)
       if (diffSecs < 10) setSyncDelta("just now")
       else if (diffSecs < 60) setSyncDelta(`${diffSecs}s ago`)
       else setSyncDelta(`${Math.floor(diffSecs / 60)}m ago`)
@@ -213,7 +213,7 @@ export default function PillPalDashboard() {
     const sessionKeys = ["morning", "midday", "evening"]
     const day = daysShort.indexOf(dayShortName)
     const session = sessionKeys.indexOf(sessionName)
-    
+
     const slot = getSlotIndexFromDaySession(day, session)
     await dispenseManual(slot)
     setTimeout(() => setIsDispensing(false), 2000)
@@ -297,10 +297,10 @@ export default function PillPalDashboard() {
           <div className="h-full">
             <Card className="relative overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm h-full flex flex-col justify-center">
               <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-background/50 hover:bg-background/80 backdrop-blur-sm shadow-sm border border-border/50" 
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-background/50 hover:bg-background/80 backdrop-blur-sm shadow-sm border border-border/50"
                   onClick={() => setIsProfileModalOpen(true)}
                 >
                   <Settings className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
@@ -506,32 +506,32 @@ export default function PillPalDashboard() {
           {/* Recent Activity Log */}
           <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm flex flex-col h-full">
             <CardHeader className="pb-2 sm:pb-4 border-b border-border/10 bg-muted/20">
-            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <Activity className="h-4 w-4 text-primary" />
-              Recent Activity
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-4 sm:pb-6">
-            <ul className="space-y-2 sm:space-y-3">
-              {activityLog.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No recent activity</p>
-              ) : (
-                activityLog.map((entry: any) => (
-                  <li
-                    key={entry.id}
-                    className="flex items-center gap-3 rounded-xl border border-border/50 bg-secondary/30 px-3 py-2.5 sm:px-4 sm:py-3"
-                  >
-                    {getActivityIcon(entry.type)}
-                    <span className="flex-1 text-xs sm:text-sm text-foreground">{entry.message}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {entry.timeLabel}
-                    </span>
-                  </li>
-                ))
-              )}
-            </ul>
-          </CardContent>
-        </Card>
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Activity className="h-4 w-4 text-primary" />
+                Recent Activity
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4 sm:pb-6">
+              <ul className="space-y-2 sm:space-y-3">
+                {activityLog.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No recent activity</p>
+                ) : (
+                  activityLog.map((entry: any) => (
+                    <li
+                      key={entry.id}
+                      className="flex items-center gap-3 rounded-xl border border-border/50 bg-secondary/30 px-3 py-2.5 sm:px-4 sm:py-3"
+                    >
+                      {getActivityIcon(entry.type)}
+                      <span className="flex-1 text-xs sm:text-sm text-foreground">{entry.message}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {entry.timeLabel}
+                      </span>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </CardContent>
+          </Card>
 
           {/* Monthly Analytics Report */}
           <div className="h-full print:block">
@@ -541,11 +541,11 @@ export default function PillPalDashboard() {
 
       </main>
 
-      <ProfileSettings 
-        open={isProfileModalOpen} 
-        onOpenChange={setIsProfileModalOpen} 
-        profile={profile} 
-        onUpdateProfile={handleUpdateProfile} 
+      <ProfileSettings
+        open={isProfileModalOpen}
+        onOpenChange={setIsProfileModalOpen}
+        profile={profile}
+        onUpdateProfile={handleUpdateProfile}
       />
     </div>
   )
