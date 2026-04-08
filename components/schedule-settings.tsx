@@ -39,7 +39,8 @@ export function ScheduleSettings({ scheduleData, onSave, disabled }: ScheduleSet
         evening: scheduleData[2] ? fmt(scheduleData[2]) : "20:00",
       })
     }
-  }, [scheduleData])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(scheduleData)])
 
   const handleSave = async () => {
     setIsSaving(true)

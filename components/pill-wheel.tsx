@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useRef, useEffect } from "react"
+import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { Home, Plus, Pill, X, Search, Check } from "lucide-react"
 import {
@@ -43,6 +44,7 @@ interface PillWheelProps {
   slotMedicines: Record<number, string[]>
   onUpdateSlotMedicines: (slot: number, medicines: string[]) => void
   dispensedSlots?: number[]
+  isDispensing?: boolean
 }
 
 export function PillWheel({ 
@@ -50,7 +52,8 @@ export function PillWheel({
   dispensedSlots = [],
   totalSlots = 22,
   slotMedicines,
-  onUpdateSlotMedicines
+  onUpdateSlotMedicines,
+  isDispensing = false
 }: PillWheelProps) {
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null)
   const [searchValue, setSearchValue] = useState("")
@@ -205,8 +208,37 @@ export function PillWheel({
             fill="currentColor"
             className="text-secondary/50 dark:text-secondary/30"
           />
+
+          {/* Dispensing Loading Status Overlay */}
+          <motion.circle
+            cx={centerX}
+            cy={centerY}
+            r={radius + 30}
+            fill="currentColor"
+            className="text-blue-500 pointer-events-none"
+            initial={{ opacity: 0 }}
+            animate={{ 
+              opacity: isDispensing ? 0.2 : 0,
+              scale: isDispensing ? [1, 1.05, 1] : 1
+            }}
+            transition={{ 
+              opacity: { duration: 0.3 },
+              scale: { repeat: Infinity, duration: 2, ease: "easeInOut" }
+            }}
+          />
           
-          {/* Slots */}
+          {/* Slots Group */}
+          <motion.g
+            animate={{ rotate: -(currentSlot) * (360 / totalSlots) }}
+            transition={{ type: "spring", stiffness: 45, damping: 15, mass: 1 }}
+            style={{ originX: "50%", originY: "50%" }}
+          >
+            {/* 
+              This transparent rect forces the <g> bounding box to exactly match the 460x460 SVG canvas perfectly.
+              This prevents Framer Motion's `originX/Y` calculation from shifting when inner slots resize symmetrically! 
+            */}
+            <rect x="0" y="0" width={size} height={size} fill="transparent" pointerEvents="none" />
+            
           {slots.map((slot, index) => {
             const angle = (index / totalSlots) * 2 * Math.PI - Math.PI / 2
             const x = centerX + radius * Math.cos(angle)
@@ -279,44 +311,50 @@ export function PillWheel({
                 />
                 
                 {/* Slot content */}
-                {isHome ? (
-                  <Home
-                    x={x - 10}
-                    y={y - 10}
-                    width={20}
-                    height={20}
-                    className="text-primary"
-                  />
-                ) : isDispensed ? (
-                  <Check
-                    x={x - 8}
-                    y={y - 8}
-                    width={16}
-                    height={16}
-                    className="text-white"
-                  />
-                ) : hasMedicines ? (
-                  <Pill
-                    x={x - 8}
-                    y={y - 8}
-                    width={16}
-                    height={16}
-                    className={isCurrent ? "text-primary-foreground" : "text-emerald-600 dark:text-emerald-400"}
-                  />
-                ) : (
-                  <text
-                    x={x}
-                    y={y}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fontSize={isCurrent ? 14 : 12}
-                    fontWeight={isCurrent ? 700 : 600}
-                    fill="currentColor"
-                    className={isCurrent ? "fill-primary-foreground" : "fill-muted-foreground"}
-                  >
-                    {index}
-                  </text>
-                )}
+                <motion.g
+                  animate={{ rotate: currentSlot * (360 / totalSlots) }}
+                  transition={{ type: "spring", stiffness: 45, damping: 15, mass: 1 }}
+                  style={{ originX: "50%", originY: "50%" }}
+                >
+                  {isHome ? (
+                    <Home
+                      x={x - 10}
+                      y={y - 10}
+                      width={20}
+                      height={20}
+                      className="text-primary"
+                    />
+                  ) : isDispensed ? (
+                    <Check
+                      x={x - 8}
+                      y={y - 8}
+                      width={16}
+                      height={16}
+                      className="text-white"
+                    />
+                  ) : hasMedicines ? (
+                    <Pill
+                      x={x - 8}
+                      y={y - 8}
+                      width={16}
+                      height={16}
+                      className={isCurrent ? "text-primary-foreground" : "text-emerald-600 dark:text-emerald-400"}
+                    />
+                  ) : (
+                    <text
+                      x={x}
+                      y={y}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize={isCurrent ? 14 : 12}
+                      fontWeight={isCurrent ? 700 : 600}
+                      fill="currentColor"
+                      className={isCurrent ? "fill-primary-foreground" : "fill-muted-foreground"}
+                    >
+                      {index}
+                    </text>
+                  )}
+                </motion.g>
                 
                 {/* Current indicator glow */}
                 {isCurrent && (
@@ -365,6 +403,7 @@ export function PillWheel({
 
             return slotElement
           })}
+          </motion.g>
           
           {/* Center hub */}
           <circle

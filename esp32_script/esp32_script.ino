@@ -137,6 +137,14 @@ void sendPingTrigger() {
             for (int i = 0; i < stepsNeeded; i++) advanceOneSlot();
             currentSlot = 0;
          }
+
+         // Manual Web Dispense Trigger from Dashboard
+         if (doc.containsKey("force_dispense")) {
+            int target = doc["force_dispense"];
+            Serial.printf("\n[Cloud] Remote WEB TRIGGER: Force Dispense Slot %d!\n", target);
+            // Spin the motor and instantly send the log to Supabase
+            dispense(target, -1, -1);
+         }
       }
     } else {
       Serial.printf("[Cloud] Heartbeat Failed (Code: %d)\n", code);

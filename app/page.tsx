@@ -38,22 +38,15 @@ import { PillWheel } from "@/components/pill-wheel"
 import { WeeklyMatrix } from "@/components/weekly-matrix"
 import { ScheduleSettings } from "@/components/schedule-settings"
 import { ThemeToggle } from "@/components/theme-toggle"
-import useWebSocket, { DAYS, SESSIONS, fmt, parse } from "@/hooks/useWebSocket"
+import { useSupabaseRealtime } from "@/hooks/useSupabaseRealtime"
+import { DAYS, SESSIONS, fmt } from "@/hooks/useWebSocket"
 import { useMemo } from "react"
+import { Settings } from "lucide-react"
 
-// Patient profile data
-const patientProfile = {
-  name: "Mohamed Ben Ali",
-  age: 65,
-  dateOfBirth: "1960-03-15",
-  phone: "+216 71 234 567",
-  emergencyContact: "+216 71 987 654",
-  conditions: ["Diabetes Type 2", "Hypertension"],
-  allergies: ["Penicillin"],
-  avatar: "",
-}
+import { ProfileSettings, PatientProfile } from "@/components/profile-settings"
+import { MonthlyReport } from "@/components/monthly-report"
 //IP ESP 32 """"""""""""""""""""""""""""""""""""""""""""""""""
-const WS_URL = "ws://192.168.1.38:81"
+const WS_URL = "ws://localhost:81"
 
 function getSlotIndexFromDaySession(day: number, session: number): number {
   return day * 3 + session + 1
@@ -88,123 +81,112 @@ function formatTime(date: Date): string {
 }
 
 export default function PillPalDashboard() {
-  const { connected, status, alerts, history, send, dismissAlert, clearHistory } = useWebSocket(WS_URL) as any
+  const { connected, dispensedSlots, activityLogs, resetWeek, dispenseManual, deviceMeta, profile: remoteProfile, updateProfile, updateSchedule } = useSupabaseRealtime()
 
-  const isOffline = !connected
-  const isDispensing = status?.dispensing === true
+  const [isOffline, setIsOffline] = useState(false)
+  const [syncDelta, setSyncDelta] = useState("just now")
+
+  useEffect(() => {
+    const checkOffline = () => {
+      if (!deviceMeta?.last_sync) return
+      const diffSecs = Math.floor((Date.now() - new Date(deviceMeta.last_sync).getTime()) / 1000)
+      setIsOffline(diffSecs > 30)
+      if (diffSecs < 10) setSyncDelta("just now")
+      else if (diffSecs < 60) setSyncDelta(`${diffSecs}s ago`)
+      else setSyncDelta(`${Math.floor(diffSecs / 60)}m ago`)
+    }
+    checkOffline()
+    const timer = setInterval(checkOffline, 2000)
+    return () => clearInterval(timer)
+  }, [deviceMeta?.last_sync])
+
+  const [isDispensing, setIsDispensing] = useState(false)
   const [countdown, setCountdown] = useState("")
-  const [dispensedSlots, setDispensedSlots] = useState<number[]>([])
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
 
-  // Hardware slots assigned medicines mapping (not yet synced to ESP32 by default)
+  const profile: PatientProfile = {
+    name: remoteProfile?.full_name || "Loading...",
+    age: remoteProfile?.birth_date ? Math.floor((Date.now() - new Date(remoteProfile.birth_date).getTime()) / 31557600000) : 0,
+    dateOfBirth: remoteProfile?.birth_date || "2000-01-01",
+    phone: remoteProfile?.phone_number || "",
+    prescriptions: remoteProfile?.medication_list || [],
+    avatar: "",
+  }
+
+  const handleUpdateProfile = (updated: PatientProfile) => {
+    updateProfile({
+      full_name: updated.name,
+      birth_date: updated.dateOfBirth,
+      phone_number: updated.phone,
+      medication_list: updated.prescriptions
+    })
+  }
+
+  // Hardware slots assigned medicines mapping
   const [slotMedicines, setSlotMedicines] = useState<Record<number, string[]>>({
     1: ["Aspirin", "Vitamin D"], 2: ["Metformin"], 3: ["Lisinopril", "Atorvastatin"], 4: ["Aspirin"]
   })
 
-  // ESP32 variables mapping
-  const batteryLevel = status?.battery ?? 100 // Default if missing
-  const currentSlot = status?.currentSlot ?? 0
+  // Supabase metadata mapping
+  const batteryLevel = deviceMeta.battery_level ?? 100
+  const currentSlot = deviceMeta.current_slot ?? 0
 
-  const currentDayIndex = status?.wday != null
-    ? (status.wday === 0 ? 6 : status.wday - 1)
-    : (new Date().getDay() === 0 ? 6 : new Date().getDay() - 1)
+  const currentDayIndex = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1
 
-  useEffect(() => {
-    if (!status?.dispensed) {
-      setDispensedSlots([])
-      return
-    }
-
-    const latestSlots: number[] = []
-    for (let d = 0; d < 7; d++) {
-      for (let s = 0; s < 3; s++) {
-        if (status.dispensed[d]?.[s]) {
-          latestSlots.push(getSlotIndexFromDaySession(d, s))
-        }
-      }
-    }
-    setDispensedSlots(latestSlots)
-  }, [status?.dispensed])
-
-  const currentHour = new Date().getHours()
-  const currentSessionIndex = currentHour < 12 ? 0 : currentHour < 20 ? 1 : 2
-
-  const rawSchedule = status?.schedule || [
-    { hour: 8, minute: 0 },
+  const rawSchedule = deviceMeta.schedule || [
+    { hour: 9, minute: 0 },
     { hour: 13, minute: 0 },
     { hour: 20, minute: 0 }
   ]
 
-  const nextSessionIndex = status?.nextSession ?? 0
-  const nextDoseTime = rawSchedule[nextSessionIndex]
-  const nextSessionName = SESSIONS[nextSessionIndex] || "Next Dose"
-
-  // Properly determine the day index for the next dose (handle wrap-around to tomorrow morning)
+  // Find the next required dose based on what has actually been dispensed today
+  let nextSessionIndex = -1
   let dispenseDayIndex = currentDayIndex
-  const timeNowMins = new Date().getHours() * 60 + new Date().getMinutes()
-  const eveningMins = rawSchedule[2].hour * 60 + rawSchedule[2].minute
-  if (timeNowMins >= eveningMins && nextSessionIndex === 0) {
+
+  for (let s = 0; s < 3; s++) {
+    const slotIndex = getSlotIndexFromDaySession(currentDayIndex, s)
+    if (!dispensedSlots.includes(slotIndex)) {
+      nextSessionIndex = s
+      break
+    }
+  }
+
+  // If all 3 doses today are dispensed, the next dose is tomorrow morning
+  if (nextSessionIndex === -1) {
+    nextSessionIndex = 0
     dispenseDayIndex = (currentDayIndex + 1) % 7
   }
+
+  const nextDoseTime = rawSchedule[nextSessionIndex]
+  const nextSessionName = SESSIONS[nextSessionIndex] || "Next Dose"
 
   // Format the object into a "HH:MM" string using your fmt() hook for the HTML
   const nextSessionTimeString = fmt(nextDoseTime)
 
-  // Transform ESP32 dispensed matrix to WeeklyMatrix format
+  // Transform Supabase arrays to WeeklyMatrix format
   const weekData = useMemo(() => {
     const daysShort = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     const sessionKeys = ["morning", "midday", "evening"] as const
     const data: Record<string, any> = {}
 
-    // Find the first chronological dispensed dose in the week to avoid marking pre-purchase days as 'missed'
-    let firstDispensedSession = 999
-    if (status?.dispensed) {
-      for (let d = 0; d < 7; d++) {
-        for (let s = 0; s < 3; s++) {
-          if (status.dispensed[d][s] && d * 3 + s < firstDispensedSession) {
-            firstDispensedSession = d * 3 + s
-          }
-        }
-      }
-    }
-
     for (let d = 0; d < 7; d++) {
       data[daysShort[d]] = { morning: "pending", midday: "pending", evening: "pending" }
       for (let s = 0; s < 3; s++) {
-        const isDispensed = status?.dispensed?.[d]?.[s]
+        const slot = getSlotIndexFromDaySession(d, s)
+        const isDispensed = dispensedSlots.includes(slot)
 
         if (isDispensed) {
           data[daysShort[d]][sessionKeys[s]] = "dispensed"
         } else {
-          // A dose is missed if its absolute chronological index is before the "next dose"
-          let currentRealWeekSession = dispenseDayIndex * 3 + nextSessionIndex
-          let cellWeekSession = d * 3 + s
-          
-          if (cellWeekSession < currentRealWeekSession) {
-            // Only mark as missed if it's earlier TODAY, or if it's AFTER we started dispensing this week
-            if (d === currentDayIndex || cellWeekSession > firstDispensedSession) {
-              data[daysShort[d]][sessionKeys[s]] = "missed"
-            }
-          }
+          data[daysShort[d]][sessionKeys[s]] = "pending"
         }
       }
     }
     return data
-  }, [status, currentDayIndex, currentSessionIndex])
+  }, [dispensedSlots, currentDayIndex, nextSessionIndex])
 
   // Transform hook history into ActivityLog
-  const activityLog = useMemo(() => {
-    if (!history || history.length === 0) return []
-    return history.map((entry: any, i: number) => ({
-      id: entry.id || String(i),
-      type: entry.kind === "dispensed" ? "dispensed" : entry.kind === "missed" ? "missed" : "manual",
-      message: entry.kind === "dispensed"
-        ? `${SESSIONS[entry.session] || "Dose"} dispensed for ${DAYS[entry.day] || "today"}`
-        : entry.kind === "missed"
-          ? `Missed ${SESSIONS[entry.session]} dose`
-          : entry.text || `Action at ${entry.timestamp}`,
-      timeLabel: entry.timestamp || entry.date,
-    }))
-  }, [history])
+  const activityLog = activityLogs
 
   // Live countdown timer
   useEffect(() => {
@@ -219,24 +201,26 @@ export default function PillPalDashboard() {
   }, [nextDoseTime.hour, nextDoseTime.minute])
 
   const handleDispense = async () => {
-    send({ action: "dispense", day: dispenseDayIndex, session: nextSessionIndex })
+    setIsDispensing(true)
     const slot = getSlotIndexFromDaySession(dispenseDayIndex, nextSessionIndex)
-    setDispensedSlots((prev) => prev.includes(slot) ? prev : [...prev, slot])
+    await dispenseManual(slot)
+    setTimeout(() => setIsDispensing(false), 2000)
   }
 
-  const handleManualDispense = (dayShortName: string, sessionName: string) => {
+  const handleManualDispense = async (dayShortName: string, sessionName: string) => {
+    setIsDispensing(true)
     const daysShort = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     const sessionKeys = ["morning", "midday", "evening"]
     const day = daysShort.indexOf(dayShortName)
     const session = sessionKeys.indexOf(sessionName)
-    send({ action: "dispense", day, session })
 
     const slot = getSlotIndexFromDaySession(day, session)
-    setDispensedSlots((prev) => prev.includes(slot) ? prev : [...prev, slot])
+    await dispenseManual(slot)
+    setTimeout(() => setIsDispensing(false), 2000)
   }
 
   const handleResetWeek = () => {
-    send({ action: "reset" })
+    resetWeek()
   }
 
   const handleUpdateSlotMedicines = (slot: number, medicines: string[]) => {
@@ -264,24 +248,6 @@ export default function PillPalDashboard() {
       {/* Background gradient */}
       <div className="pointer-events-none fixed inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/5 dark:from-primary/10 dark:to-primary/5" />
 
-      {/* Offline Overlay */}
-      {isOffline && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md"
-          role="alert"
-          aria-live="assertive"
-        >
-          <div className="flex flex-col items-center gap-4 rounded-2xl bg-card p-8 shadow-2xl ring-1 ring-border">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-lg font-semibold text-foreground">
-              Reconnecting to PillPal Hardware...
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Please ensure your device is powered on and nearby.
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Top Navigation */}
       <header className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-xl">
@@ -308,17 +274,17 @@ export default function PillPalDashboard() {
             </Badge>
             <Badge
               variant="outline"
-              className="hidden gap-1.5 border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 sm:flex"
+              className={`hidden gap-1.5 border hover:bg-transparent sm:flex ${isOffline ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400" : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"}`}
             >
               <Wifi className="h-3.5 w-3.5" aria-hidden="true" />
-              Connected
+              {isOffline ? "Hardware Offline" : "Hardware Connected"}
             </Badge>
             <Badge
               variant="outline"
               className="hidden gap-1.5 border-border bg-secondary text-secondary-foreground md:flex"
             >
               <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-              Synced just now
+              Synced {syncDelta}
             </Badge>
             <ThemeToggle />
           </div>
@@ -329,43 +295,49 @@ export default function PillPalDashboard() {
         <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
           {/* Patient Profile Section */}
           <div className="h-full">
-            <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm h-full flex flex-col justify-center">
+            <Card className="relative overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm h-full flex flex-col justify-center">
+              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-background/50 hover:bg-background/80 backdrop-blur-sm shadow-sm border border-border/50"
+                  onClick={() => setIsProfileModalOpen(true)}
+                >
+                  <Settings className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                </Button>
+              </div>
               <CardContent className="p-4 sm:py-6 flex-1 flex flex-col items-center justify-center">
                 <div className="flex flex-col items-center text-center gap-5 w-full">
                   <Avatar className="h-20 w-20 border-4 border-background shadow-md shadow-primary/10 ring-2 ring-primary/20 sm:h-24 sm:w-24">
-                    <AvatarImage src={patientProfile.avatar} alt={patientProfile.name} />
+                    <AvatarImage src={profile.avatar} alt={profile.name} />
                     <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold sm:text-2xl">
-                      {patientProfile.name.split(" ").map(n => n[0]).join("")}
+                      {profile.name.split(" ").map(n => n[0]).join("").toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
 
                   <div className="space-y-3 w-full">
-                    <h2 className="text-xl font-bold text-foreground sm:text-2xl truncate">{patientProfile.name}</h2>
+                    <h2 className="text-xl font-bold text-foreground sm:text-2xl truncate">{profile.name}</h2>
                     <div className="flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground sm:flex-row sm:gap-4">
                       <span className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
                         <User className="h-4 w-4 text-primary/70" />
-                        {patientProfile.age}y
+                        {profile.age}y
                       </span>
                       <span className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
                         <Calendar className="h-4 w-4 text-primary/70" />
-                        {new Date(patientProfile.dateOfBirth).toLocaleDateString("en-GB")}
+                        {new Date(profile.dateOfBirth).toLocaleDateString("en-GB")}
                       </span>
                       <span className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
                         <Phone className="h-4 w-4 text-primary/70" />
-                        <span>{patientProfile.phone}</span>
+                        <span>{profile.phone}</span>
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-                    {patientProfile.conditions.map((condition) => (
-                      <Badge key={condition} variant="default" className="bg-primary/15 text-primary hover:bg-primary/25 border-primary/20 border transition-colors shadow-sm">
-                        {condition}
-                      </Badge>
-                    ))}
-                    {patientProfile.allergies.map((allergy) => (
-                      <Badge key={allergy} variant="destructive" className="bg-red-500/15 text-red-600 dark:text-red-400 hover:bg-red-500/25 border-red-500/20 border transition-colors shadow-sm">
-                        Allergy: {allergy}
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1 transition-all">
+                    {profile.prescriptions.map((med) => (
+                      <Badge key={med} variant="default" className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25 border-emerald-500/20 border shadow-sm">
+                        <Pill className="h-3 w-3 mr-1.5" />
+                        {med}
                       </Badge>
                     ))}
                   </div>
@@ -377,8 +349,8 @@ export default function PillPalDashboard() {
           {/* Schedule Settings Inline */}
           <div className="h-full">
             <ScheduleSettings
-              scheduleData={status?.schedule}
-              onSave={(parsed) => send({ action: "setschedule", schedule: parsed })}
+              scheduleData={rawSchedule}
+              onSave={(parsed) => updateSchedule(parsed)}
               disabled={isOffline}
             />
           </div>
@@ -464,6 +436,7 @@ export default function PillPalDashboard() {
               <div className="flex flex-col items-center">
                 <PillWheel
                   currentSlot={currentSlot}
+                  isDispensing={isDispensing}
                   slotMedicines={slotMedicines}
                   onUpdateSlotMedicines={handleUpdateSlotMedicines}
                   dispensedSlots={dispensedSlots}
@@ -529,38 +502,51 @@ export default function PillPalDashboard() {
           </Card>
         </div>
 
-        {/* Recent Activity Log */}
-        <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm">
-          <CardHeader className="pb-2 sm:pb-4">
-            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <Activity className="h-4 w-4 text-primary" />
-              Recent Activity
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-4 sm:pb-6">
-            <ul className="space-y-2 sm:space-y-3">
-              {activityLog.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No recent activity</p>
-              ) : (
-                activityLog.map((entry: any) => (
-                  <li
-                    key={entry.id}
-                    className="flex items-center gap-3 rounded-xl border border-border/50 bg-secondary/30 px-3 py-2.5 sm:px-4 sm:py-3"
-                  >
-                    {getActivityIcon(entry.type)}
-                    <span className="flex-1 text-xs sm:text-sm text-foreground">{entry.message}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {entry.timeLabel}
-                    </span>
-                  </li>
-                ))
-              )}
-            </ul>
-          </CardContent>
-        </Card>
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+          {/* Recent Activity Log */}
+          <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm flex flex-col h-full">
+            <CardHeader className="pb-2 sm:pb-4 border-b border-border/10 bg-muted/20">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Activity className="h-4 w-4 text-primary" />
+                Recent Activity
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4 sm:pb-6">
+              <ul className="space-y-2 sm:space-y-3">
+                {activityLog.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No recent activity</p>
+                ) : (
+                  activityLog.map((entry: any) => (
+                    <li
+                      key={entry.id}
+                      className="flex items-center gap-3 rounded-xl border border-border/50 bg-secondary/30 px-3 py-2.5 sm:px-4 sm:py-3"
+                    >
+                      {getActivityIcon(entry.type)}
+                      <span className="flex-1 text-xs sm:text-sm text-foreground">{entry.message}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {entry.timeLabel}
+                      </span>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </CardContent>
+          </Card>
 
-        {/* Removed Dummy Offline Mode Toggle */}
+          {/* Monthly Analytics Report */}
+          <div className="h-full print:block">
+            <MonthlyReport />
+          </div>
+        </div>
+
       </main>
+
+      <ProfileSettings
+        open={isProfileModalOpen}
+        onOpenChange={setIsProfileModalOpen}
+        profile={profile}
+        onUpdateProfile={handleUpdateProfile}
+      />
     </div>
   )
 }
