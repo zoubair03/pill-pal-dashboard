@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import mqtt from 'mqtt'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL',
@@ -40,7 +41,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Failed to reset slots' }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, message: 'All slots reset to pending.' })
+    // Connect to HiveMQ Public Broker to broadcast reset instantly to the hardware
+    const client = mqtt.connect('mqtt://broker.hivemq.com:1883')
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        client.end()
+        // If MQTT fails, still return success because DB was reset successfully.
+        resolve(NextResponse.json({ success: true, message: 'DB Reset, but MQTT timeout.' }))
+      }, 3000)
+
+      client.on('connect', () => {
+        clearTimeout(timeout)
+        const topic = `pillpal/cmd/${mac_address}`
+        const payload = JSON.stringify({ action: "reset", slot: 0 })
+        
+        client.publish(topic, payload, { qos: 1 }, () => {
+          client.end()
+          resolve(NextResponse.json({ success: true, message: 'All slots reset to pending & Hardware triggered.' }))
+        })
+      })
+      
+      client.on('error', (err) => {
+        clearTimeout(timeout)
+        client.end()
+        resolve(NextResponse.json({ success: true, message: 'DB Reset, but MQTT failed.' }))
+      })
+    })
 
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })

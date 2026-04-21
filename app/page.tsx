@@ -34,7 +34,6 @@ import {
   Activity,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { PillWheel } from "@/components/pill-wheel"
 import { WeeklyMatrix } from "@/components/weekly-matrix"
 import { ScheduleSettings } from "@/components/schedule-settings"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -45,8 +44,7 @@ import { Settings } from "lucide-react"
 
 import { ProfileSettings, PatientProfile } from "@/components/profile-settings"
 import { MonthlyReport } from "@/components/monthly-report"
-//IP ESP 32 """"""""""""""""""""""""""""""""""""""""""""""""""
-const WS_URL = "ws://localhost:81"
+// 
 
 function getSlotIndexFromDaySession(day: number, session: number): number {
   return day * 3 + session + 1
@@ -93,7 +91,9 @@ export default function PillPalDashboard() {
       setIsOffline(diffSecs > 30)
       if (diffSecs < 10) setSyncDelta("just now")
       else if (diffSecs < 60) setSyncDelta(`${diffSecs}s ago`)
-      else setSyncDelta(`${Math.floor(diffSecs / 60)}m ago`)
+      else if (diffSecs < 3600) setSyncDelta(`${Math.floor(diffSecs / 60)}m ago`)
+      else if (diffSecs < 86400) setSyncDelta(`${Math.floor(diffSecs / 3600)}h ago`)
+      else setSyncDelta(`${Math.floor(diffSecs / 86400)}d ago`)
     }
     checkOffline()
     const timer = setInterval(checkOffline, 2000)
@@ -122,14 +122,8 @@ export default function PillPalDashboard() {
     })
   }
 
-  // Hardware slots assigned medicines mapping
-  const [slotMedicines, setSlotMedicines] = useState<Record<number, string[]>>({
-    1: ["Aspirin", "Vitamin D"], 2: ["Metformin"], 3: ["Lisinopril", "Atorvastatin"], 4: ["Aspirin"]
-  })
-
   // Supabase metadata mapping
   const batteryLevel = deviceMeta.battery_level ?? 100
-  const currentSlot = deviceMeta.current_slot ?? 0
 
   const currentDayIndex = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1
 
@@ -221,13 +215,6 @@ export default function PillPalDashboard() {
 
   const handleResetWeek = () => {
     resetWeek()
-  }
-
-  const handleUpdateSlotMedicines = (slot: number, medicines: string[]) => {
-    setSlotMedicines((prev) => ({
-      ...prev,
-      [slot]: medicines,
-    }))
   }
 
   const getActivityIcon = (type: string) => {
@@ -422,39 +409,11 @@ export default function PillPalDashboard() {
           </CardContent>
         </Card>
 
-        {/* Hardware Mirror & Weekly Matrix */}
-        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
-          {/* The Hardware Mirror (The Wheel) */}
-          <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm">
-            <CardHeader className="pb-2 sm:pb-4">
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <div className="h-2 w-2 rounded-full bg-primary" />
-                Hardware Mirror
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-4 sm:pb-6">
-              <div className="flex flex-col items-center">
-                <PillWheel
-                  currentSlot={currentSlot}
-                  isDispensing={isDispensing}
-                  slotMedicines={slotMedicines}
-                  onUpdateSlotMedicines={handleUpdateSlotMedicines}
-                  dispensedSlots={dispensedSlots}
-                />
-                <div className="mt-3 text-center sm:mt-4">
-                  <p className="text-xs text-muted-foreground sm:text-sm">
-                    22-Slot Motor Wheel - 21 Doses + Home Position
-                  </p>
-                  <p className="mt-1 font-semibold text-primary text-sm sm:text-base">
-                    Current Position: Slot {currentSlot}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Weekly Matrix */}
+        <div className="grid gap-4 sm:gap-6">
 
           {/* Weekly Matrix */}
-          <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm">
+          <Card className="overflow-hidden border-border/50 bg-card/80 shadow-xl shadow-black/5 backdrop-blur-sm flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between pb-2 sm:pb-4">
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <div className="h-2 w-2 rounded-full bg-primary" />

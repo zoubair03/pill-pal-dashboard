@@ -39,6 +39,7 @@ interface Medication {
 }
 
 interface PillWheelProps {
+  title?: string
   currentSlot: number
   totalSlots?: number
   slotMedicines: Record<number, string[]>
@@ -48,9 +49,10 @@ interface PillWheelProps {
 }
 
 export function PillWheel({ 
+  title,
   currentSlot, 
   dispensedSlots = [],
-  totalSlots = 22,
+  totalSlots = 8,
   slotMedicines,
   onUpdateSlotMedicines,
   isDispensing = false
@@ -64,9 +66,9 @@ export function PillWheel({
   
   const slots = Array.from({ length: totalSlots }, (_, i) => i)
   
-  // Responsive sizing
-  const size = 460
-  const radius = size * 0.42
+  // Responsive sizing for 3-wheel layout
+  const size = 200
+  const radius = size * 0.40
   const centerX = size / 2
   const centerY = size / 2
 
@@ -157,7 +159,10 @@ export function PillWheel({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="relative flex items-center justify-center w-full max-w-sm sm:max-w-md mx-auto pb-4">
+      <div className="relative flex flex-col items-center justify-center w-full max-w-[180px] sm:max-w-[200px] mx-auto pb-2">
+        {title && (
+          <h3 className="mb-2 text-xs font-bold text-foreground drop-shadow-sm">{title}</h3>
+        )}
         <svg 
           viewBox={`0 0 ${size} ${size}`} 
           className="w-full h-auto drop-shadow-xl"
@@ -247,7 +252,7 @@ export function PillWheel({
             const isCurrent = index === currentSlot
             const hasMedicines = (slotMedicines[index]?.length || 0) > 0
             const isDispensed = dispensedSlots.includes(index)
-            const slotRadius = isCurrent ? 22 : 16
+            const slotRadius = isCurrent ? 20 : 16
 
             const slotElement = (
               <g 
@@ -346,7 +351,7 @@ export function PillWheel({
                       y={y}
                       textAnchor="middle"
                       dominantBaseline="central"
-                      fontSize={isCurrent ? 14 : 12}
+                      fontSize={isCurrent ? 18 : 14}
                       fontWeight={isCurrent ? 700 : 600}
                       fill="currentColor"
                       className={isCurrent ? "fill-primary-foreground" : "fill-muted-foreground"}
@@ -361,7 +366,7 @@ export function PillWheel({
                   <circle
                     cx={x}
                     cy={y}
-                    r={24}
+                    r={32}
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="1.5"

@@ -123,7 +123,7 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
     await fetch("/api/web_trigger", {
        method: "POST",
        headers: { "Content-Type": "application/json" },
-       body: JSON.stringify({ slot_number })
+       body: JSON.stringify({ slot_number, mac_address: deviceMeta.mac_address })
     })
   }
 
