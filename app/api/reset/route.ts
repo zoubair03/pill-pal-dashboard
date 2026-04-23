@@ -9,16 +9,16 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { mac_address } = await req.json()
+    const { serial_number } = await req.json()
 
-    if (!mac_address) {
-      return NextResponse.json({ error: 'Missing mac_address' }, { status: 400 })
+    if (!serial_number) {
+      return NextResponse.json({ error: 'Missing serial_number' }, { status: 400 })
     }
 
     const { data: device, error: devErr } = await supabaseAdmin
       .from('devices')
       .select('id')
-      .eq('mac_address', mac_address)
+      .eq('serial_number', serial_number)
       .single()
 
     if (devErr || !device) {
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     // Connect to HiveMQ Public Broker to broadcast reset instantly to the hardware
     const client = mqtt.connect('mqtt://broker.hivemq.com:1883')
 
-    return new Promise((resolve) => {
+    return new Promise<Response>((resolve) => {
       const timeout = setTimeout(() => {
         client.end()
         // If MQTT fails, still return success because DB was reset successfully.
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
 
       client.on('connect', () => {
         clearTimeout(timeout)
-        const topic = `pillpal/cmd/${mac_address}`
+        const topic = `pillpal/cmd/${serial_number}`
         const payload = JSON.stringify({ action: "reset", slot: 0 })
         
         client.publish(topic, payload, { qos: 1 }, () => {

@@ -1,14 +1,17 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Search, X, Plus, Pill } from "lucide-react"
-import medications from "@/data/medications.json"
+const medications = [
+  "Aspirin", "Metformin", "Lisinopril", "Atorvastatin", "Vitamin D", 
+  "Amoxicillin", "Ibuprofen", "Omeprazole", "Losartan", "Gabapentin"
+]
 
 export interface PatientProfile {
   name: string
@@ -33,9 +36,7 @@ export function ProfileSettings({ open, onOpenChange, profile, onUpdateProfile }
     if (!searchValue.trim()) return []
     const query = searchValue.toLowerCase()
     return medications.filter(med => 
-      med.brand.toLowerCase().includes(query) ||
-      med.dci.toLowerCase().includes(query) ||
-      med.label.toLowerCase().includes(query)
+      med.toLowerCase().includes(query)
     ).slice(0, 10)
   }, [searchValue])
 
@@ -61,6 +62,7 @@ export function ProfileSettings({ open, onOpenChange, profile, onUpdateProfile }
       <DialogContent className="max-w-md w-11/12 rounded-xl sm:max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="text-xl">Edit Patient Profile</DialogTitle>
+          <DialogDescription className="sr-only">Update patient profile details</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 pt-4">
@@ -140,16 +142,16 @@ export function ProfileSettings({ open, onOpenChange, profile, onUpdateProfile }
                 <div className="p-2 space-y-1">
                   {filteredMedications.length > 0 ? (
                     filteredMedications.map(med => {
-                      const isAdded = profile.prescriptions.includes(med.label)
+                      const isAdded = profile.prescriptions.includes(med)
                       return (
-                        <div key={med.label} className="flex items-center justify-between p-2 hover:bg-secondary/50 rounded-md">
-                          <div className="text-sm font-medium">{med.label}</div>
+                        <div key={med} className="flex items-center justify-between p-2 hover:bg-secondary/50 rounded-md">
+                          <div className="text-sm font-medium">{med}</div>
                           <Button
                             variant={isAdded ? "secondary" : "default"}
                             size="sm"
                             className="h-7 text-xs"
                             disabled={isAdded}
-                            onClick={() => handleAddMedication(med.label)}
+                            onClick={() => handleAddMedication(med)}
                           >
                             {isAdded ? "Added" : <><Plus className="h-3 w-3 mr-1" /> Add</>}
                           </Button>

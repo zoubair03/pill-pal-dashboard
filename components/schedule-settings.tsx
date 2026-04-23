@@ -13,8 +13,7 @@ interface ScheduleTime {
   evening: string
 }
 
-import useWebSocket from "@/hooks/useWebSocket"
-import { DAYS, SESSIONS, fmt, parse } from "@/hooks/useWebSocket"
+import { SESSIONS, SESSION_ICONS, fmt, parse } from "@/lib/utils"
 
 interface ScheduleSettingsProps {
   scheduleData?: { hour: number; minute: number }[]

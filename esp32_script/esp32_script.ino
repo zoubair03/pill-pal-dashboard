@@ -1,24 +1,31 @@
 /*
   ============================================================
-  Weekly Pill Dispenser — EVENT DRIVEN MQTT CORE
+  Weekly Pill Dispenser — EVENT DRIVEN MQTT + REST HYBRID
   ============================================================
   Install via Arduino Library Manager:
     - "PubSubClient" by Nick O'Leary
     - "ArduinoJson" by Benoit Blanchon
+    - "WiFiManager" by tzapu (for Captive Portal)
 */
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
+#include "time.h"
 
 // ── Configuration ─────────────────────────────────────────
-const char* WIFI_SSID        = "mahdi";
-const char* WIFI_PASSWORD    = "mahdi1818";
 const char* API_URL_DISPENSE = "http://192.168.1.100:3000/api/dispense";
+const char* API_URL_PING     = "http://192.168.1.100:3000/api/ping";
 const char* MQTT_BROKER      = "broker.hivemq.com";
 const int   MQTT_PORT        = 1883;
+
+// ── NTP Settings ──────────────────────────────────────────
+const char* NTP_SERVER          = "pool.ntp.org";
+const long  GMT_OFFSET_SEC      = 3600;  // UTC+1 for Tunisia
+const int   DAYLIGHT_OFFSET_SEC = 0;
 
 // ── Stepper Configuration ─────────────────────────────────
 #define IN1 19
@@ -28,7 +35,7 @@ const int   MQTT_PORT        = 1883;
 
 #define STEPS_PER_REV   4096
 #define STEP_DELAY_US   1000
-#define NUM_SLOTS       8    // Updated to 8 for the new triple-wheel design!
+#define NUM_SLOTS       8
 #define STEPS_PER_SLOT  (STEPS_PER_REV / NUM_SLOTS)
 
 const int stepSequence[8][4] = {
@@ -38,7 +45,16 @@ const int stepSequence[8][4] = {
 
 // ── State ─────────────────────────────────────────────────
 int  currentSlot       = 0;
-String macAddress      = "";
+const char* SERIAL_NUMBER = "SN-A1B2C3";
+
+struct DispenseTime { int hour; int minute; };
+DispenseTime schedule[3] = {
+  { 9,  0},  // Morning
+  {13,  0},  // Midday
+  {20,  0}   // Night
+};
+int  lastDispensedHour = -1;
+int  lastDispensedDay  = -1;
 
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
@@ -74,15 +90,42 @@ void advanceOneSlot() {
 }
 
 // ─────────────────────────────────────────────────────────
-// API Logger (Historical Data to Postgres Sync)
+// API Logger & Telemetry
 // ─────────────────────────────────────────────────────────
+void sendHeartbeatAndSyncSchedule() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(API_URL_PING);
+    http.addHeader("Content-Type", "application/json");
+
+    String payload = "{\"serial_number\":\"" + String(SERIAL_NUMBER) + "\"}";
+    int code = http.POST(payload);
+    
+    if (code > 0) {
+      String response = http.getString();
+      StaticJsonDocument<512> doc;
+      DeserializationError err = deserializeJson(doc, response);
+      if (!err && doc.containsKey("schedule")) {
+         JsonArray schedArr = doc["schedule"];
+         if (schedArr.size() == 3) {
+            for (int i=0; i<3; i++) {
+               schedule[i].hour = schedArr[i]["hour"] | schedule[i].hour;
+               schedule[i].minute = schedArr[i]["minute"] | schedule[i].minute;
+            }
+         }
+      }
+    }
+    http.end();
+  }
+}
+
 void sendDispenseLog(int slotValue) {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
     http.begin(API_URL_DISPENSE);
     http.addHeader("Content-Type", "application/json");
 
-    String payload = "{\"mac_address\":\"" + macAddress + "\",\"slot_number\":" + String(slotValue) + "}";
+    String payload = "{\"serial_number\":\"" + String(SERIAL_NUMBER) + "\",\"slot_number\":" + String(slotValue) + "}";
     int code = http.POST(payload);
     
     if (code > 0) Serial.printf("[Cloud Log] Sync successful (Code: %d)\n", code);
@@ -96,6 +139,7 @@ void sendDispenseLog(int slotValue) {
 // Action Handlers
 // ─────────────────────────────────────────────────────────
 void triggerDispense(int targetSlot) {
+  targetSlot = (targetSlot % NUM_SLOTS == 0) ? NUM_SLOTS : (targetSlot % NUM_SLOTS);
   int stepsNeeded = (targetSlot - currentSlot + NUM_SLOTS) % NUM_SLOTS;
   Serial.printf("\n[ACTION] Dispensing %d slot(s) → slot %d\n", stepsNeeded, targetSlot);
 
@@ -117,7 +161,7 @@ void triggerReset() {
 }
 
 // ─────────────────────────────────────────────────────────
-// MQTT Engine (Zero Latency)
+// MQTT Engine
 // ─────────────────────────────────────────────────────────
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   String message = "";
@@ -135,7 +179,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     int target = doc["slot"].as<int>();
     triggerDispense(target);
   } else if (action == "reset") {
-    // Return hardware physically to Home Slot
     triggerReset();
   }
 }
@@ -147,13 +190,9 @@ void reconnectMqtt() {
     
     if (mqttClient.connect(clientId.c_str())) {
       Serial.println("OK");
-      String topicStr = String("pillpal/cmd/") + macAddress;
+      String topicStr = String("pillpal/cmd/") + String(SERIAL_NUMBER);
       mqttClient.subscribe(topicStr.c_str());
-      Serial.printf("[MQTT] Subscribed to %s\n", topicStr.c_str());
     } else {
-      Serial.print("FAILED (");
-      Serial.print(mqttClient.state());
-      Serial.println(") Trying again in 5s");
       delay(5000);
     }
   }
@@ -171,22 +210,72 @@ void setup() {
   pinMode(IN3, OUTPUT); pinMode(IN4, OUTPUT);
   releaseStepper();
 
-  // WiFi Connect
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500); Serial.print(".");
-  }
-  macAddress = WiFi.macAddress();
-  Serial.println("\n[WiFi] Connected! MAC: " + macAddress);
+  // WiFiManager: Local intialization. Once its business is done, there is no need to keep it around
+  WiFiManager wm;
+  
+  // Set a dark theme for the Captive Portal
+  wm.setClass("invert");
 
-  // MQTT Config
+  // Automatically connect using saved credentials,
+  // if connection fails, it starts an access point with the specified name: "PillPal-Setup"
+  bool res = wm.autoConnect("PillPal-Setup"); 
+  
+  if(!res) {
+      Serial.println("Failed to connect to WiFi. Restarting...");
+      delay(3000);
+      ESP.restart();
+  } 
+  
+  Serial.println("\n[WiFi] Connected to Home Network! Device SN: " + String(SERIAL_NUMBER));
+
+  // Sync Hardware Clock to World Time
+  configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+  Serial.println("[NTP] Clock synchronized.");
+
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
 
   Serial.println("[System] Ready.");
 }
 
+unsigned long lastPing = 0;
+unsigned long lastAutoCheck = 0;
+
 void loop() {
   if (!mqttClient.connected()) reconnectMqtt();
-  mqttClient.loop(); // Wait for ultra low-latency packets!
+  mqttClient.loop();
+
+  unsigned long now = millis();
+  
+  // Heartbeat & Database Schedule Sync (Every 10 seconds)
+  if (now - lastPing > 10000) {
+    lastPing = now;
+    sendHeartbeatAndSyncSchedule();
+  }
+
+  // Auto-Dispense Time Check (Every 30 seconds)
+  if (now - lastAutoCheck > 30000) {
+    lastAutoCheck = now;
+    struct tm timeInfo;
+    if (getLocalTime(&timeInfo)) {
+      int currentHour   = timeInfo.tm_hour;
+      int currentMinute = timeInfo.tm_min;
+      int currentWday   = timeInfo.tm_wday; // 0=Sun, 1=Mon
+
+      for (int s = 0; s < 3; s++) {
+        if (currentHour == schedule[s].hour && currentMinute == schedule[s].minute) {
+          if (!(lastDispensedHour == currentHour && lastDispensedDay == currentWday)) {
+             int dayIndex = (currentWday == 0) ? 6 : (currentWday - 1);
+             int targetSlot = 1 + (dayIndex * 3) + s;
+             
+             Serial.printf("\n[Schedule] AUTO-DISPENSE TRIGGERED! Day=%d, Session=%d\n", dayIndex, s);
+             triggerDispense(targetSlot);
+             
+             lastDispensedHour = currentHour;
+             lastDispensedDay = currentWday;
+          }
+        }
+      }
+    }
+  }
 }

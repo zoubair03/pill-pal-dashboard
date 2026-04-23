@@ -16,25 +16,38 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
     current_slot: 0, 
     last_sync: new Date().toISOString(),
     schedule: defaultSchedule,
-    mac_address: ""
+    serial_number: ""
   })
   const [profile, setProfile] = useState<any>(null)
 
   useEffect(() => {
-    // Because we don't have the user's hardcoded UUID, the hook automatically grabs the first device it finds in Supabase to start listening!
+    // 1. Authenticate user & find THEIR specific device!
     if (!deviceId) {
-      supabase.from('devices').select('id, battery_level, current_slot, last_sync, schedule, mac_address').limit(1).then(({ data }) => {
+      const checkUserAndDevice = async () => {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          window.location.href = '/login'
+          return
+        }
+        
+        const { data } = await supabase.from('devices').select('id, battery_level, current_slot, last_sync, schedule, serial_number').eq('owner_id', session.user.id).limit(1)
+        
         if (data && data.length > 0) {
+          console.log("⚡ [HARDWARE] Connected to device with SN:", data[0].serial_number)
           setDeviceId(data[0].id)
           setDeviceMeta({ 
             battery_level: data[0].battery_level, 
             current_slot: data[0].current_slot, 
             last_sync: data[0].last_sync || new Date().toISOString(),
             schedule: (data[0] as any).schedule || defaultSchedule,
-            mac_address: data[0].mac_address || ""
+            serial_number: data[0].serial_number || ""
           })
+        } else {
+          // They are logged in, but don't own a device! Route them to pair one.
+          window.location.href = '/setup'
         }
-      })
+      }
+      checkUserAndDevice()
       return
     }
 
@@ -47,7 +60,7 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
             current_slot: dev.current_slot, 
             last_sync: dev.last_sync,
             schedule: dev.schedule || defaultSchedule,
-            mac_address: dev.mac_address
+            serial_number: dev.serial_number
          }))
          
          const { data: prof } = await supabase.from('profiles').select('*').eq('id', dev.owner_id).single()
@@ -115,7 +128,7 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
     await fetch("/api/reset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mac_address: deviceMeta.mac_address })
+      body: JSON.stringify({ serial_number: deviceMeta.serial_number })
     })
   }
 
@@ -123,7 +136,7 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
     await fetch("/api/web_trigger", {
        method: "POST",
        headers: { "Content-Type": "application/json" },
-       body: JSON.stringify({ slot_number, mac_address: deviceMeta.mac_address })
+       body: JSON.stringify({ slot_number, serial_number: deviceMeta.serial_number })
     })
   }
 

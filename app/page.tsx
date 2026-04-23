@@ -38,7 +38,7 @@ import { WeeklyMatrix } from "@/components/weekly-matrix"
 import { ScheduleSettings } from "@/components/schedule-settings"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useSupabaseRealtime } from "@/hooks/useSupabaseRealtime"
-import { DAYS, SESSIONS, fmt } from "@/hooks/useWebSocket"
+import { SESSIONS, fmt } from "@/lib/utils"
 import { useMemo } from "react"
 import { Settings } from "lucide-react"
 
