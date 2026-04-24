@@ -21,7 +21,7 @@ type DoseStatus = "dispensed" | "pending" | "missed"
 interface DoseSession {
   morning: DoseStatus
   midday: DoseStatus
-  evening: DoseStatus
+  night: DoseStatus
 }
 
 interface WeeklyMatrixProps {
@@ -35,12 +35,12 @@ interface WeeklyMatrixProps {
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 const DAY_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-const SESSIONS = ["morning", "midday", "evening"] as const
+const SESSIONS = ["morning", "midday", "night"] as const
 
 const SESSION_CONFIG = {
-  morning: { label: "Morning", short: "AM",  Icon: Sun,      color: "text-amber-500",  bg: "bg-amber-50 dark:bg-amber-950/40",   border: "border-amber-200 dark:border-amber-800/40" },
-  midday:  { label: "Midday",  short: "Noon", Icon: CloudSun, color: "text-sky-500",    bg: "bg-sky-50 dark:bg-sky-950/40",       border: "border-sky-200 dark:border-sky-800/40" },
-  evening: { label: "Evening", short: "PM",  Icon: Moon,     color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-950/40", border: "border-indigo-200 dark:border-indigo-800/40" },
+  morning: { label: "Morning", short: "AM",   Icon: Sun,      color: "text-amber-500",  bg: "bg-amber-50 dark:bg-amber-950/40",   border: "border-amber-200 dark:border-amber-800/40" },
+  midday:  { label: "Midday",  short: "Noon",  Icon: CloudSun, color: "text-sky-500",    bg: "bg-sky-50 dark:bg-sky-950/40",       border: "border-sky-200 dark:border-sky-800/40" },
+  night:   { label: "Night",   short: "Night", Icon: Moon,     color: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-950/40", border: "border-indigo-200 dark:border-indigo-800/40" },
 }
 
 // ─── Dose Cell ────────────────────────────────────────────────────────────────
@@ -253,7 +253,7 @@ export function WeeklyMatrix({ weekData, onManualDispense, disabled, currentDayI
             day={day}
             dayFull={DAY_FULL[i]}
             dayIndex={i}
-            doses={weekData[day] ?? { morning: "pending", midday: "pending", evening: "pending" }}
+            doses={weekData[day] ?? { morning: "pending", midday: "pending", night: "pending" }}
             isToday={currentDayIndex === i}
             disabled={disabled}
             onDispense={(session) => handleCellClick(day, session)}

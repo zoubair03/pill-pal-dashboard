@@ -45,7 +45,7 @@ export async function POST() {
         tableau:      m.tableau      || null,
         indication:   m.indication   || null,
         label:        m.label        || null,
-        full_cap:     m.full_cap     || null,
+        full_text:     m.full_text     || null,
       }))
 
       const { error } = await supabaseAdmin.from('medications').insert(chunk)

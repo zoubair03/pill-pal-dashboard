@@ -45,9 +45,9 @@ import { MonthlyReport } from "@/components/monthly-report"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getSlotIndexFromDaySession(day: number, session: number): number {
-  return day * 3 + session + 1
-}
+// Wheel types (module-level so they're available throughout the file)
+type WheelName = 'morning' | 'midday' | 'night'
+const WHEEL_NAMES: WheelName[] = ['morning', 'midday', 'night']
 
 function formatCountdown(targetHour: number, targetMinute: number): string {
   const now = new Date()
@@ -129,10 +129,6 @@ export default function PillPalDashboard() {
     { hour: 13, minute: 0 },
     { hour: 20, minute: 0 },
   ]
-
-  // Wheel names matching the new 3-wheel system
-  const WHEEL_NAMES = ['morning', 'midday', 'night'] as const
-  type WheelName = 'morning' | 'midday' | 'night'
 
   // daySlot: 1=Mon...7=Sun (matches DB and firmware)
   const todayDaySlot = currentDayIndex + 1
@@ -410,8 +406,8 @@ export default function PillPalDashboard() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Confirm Manual Dispense</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will rotate the pill wheel to slot{" "}
-                    <strong>{getSlotIndexFromDaySession(dispenseDayIndex, nextSessionIndex)}</strong> and release the{" "}
+                    This will advance the <strong>{WHEEL_NAMES[nextSessionIndex]}</strong> wheel to slot{" "}
+                    <strong>{dispenseDaySlot}</strong> and release the{" "}
                     <strong>{nextSessionName}</strong> dose. Are you sure?
                   </AlertDialogDescription>
                 </AlertDialogHeader>
