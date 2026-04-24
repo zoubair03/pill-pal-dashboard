@@ -26,21 +26,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Device not authorized or not found' }, { status: 404 })
     }
 
-    const { data: slot, error: slotError } = await supabaseAdmin
+    const { data: slot } = await supabaseAdmin
       .from('medication_slots')
       .select('id, med_list')
       .eq('device_id', device.id)
       .eq('slot_number', slot_number)
       .single()
 
-    if (slotError || !slot) {
-      return NextResponse.json({ error: 'Slot configuration not found' }, { status: 404 })
+    let medList = []
+    if (slot) {
+      medList = slot.med_list || []
+      const { error: updateError } = await supabaseAdmin
+        .from('medication_slots')
+        .update({ is_dispensed: true })
+        .eq('id', slot.id)
+        
+      if (updateError) {
+        return NextResponse.json({ error: 'Failed to update slot status' }, { status: 500 })
+      }
+    } else {
+      // If the slot record doesn't exist yet, create it and mark it dispensed
+      const { error: insertError } = await supabaseAdmin
+        .from('medication_slots')
+        .insert({
+          device_id: device.id,
+          slot_number: slot_number,
+          is_dispensed: true,
+          med_list: []
+        })
+        
+      if (insertError) {
+        return NextResponse.json({ error: 'Failed to create slot status' }, { status: 500 })
+      }
     }
-
-    const { error: updateError } = await supabaseAdmin
-      .from('medication_slots')
-      .update({ is_dispensed: true })
-      .eq('id', slot.id)
 
     // Only update the device's physical motor pointer — NOT last_sync!
     // last_sync should only be touched by the real hardware heartbeat (/api/ping)
@@ -60,7 +78,7 @@ export async function POST(req: Request) {
         slot_number: slot_number,
         session_type: 'automated',
         status: 'dispensed',
-        meds_dispensed: slot.med_list
+        meds_dispensed: medList
       })
 
     if (logError) {
