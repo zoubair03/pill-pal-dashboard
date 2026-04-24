@@ -179,11 +179,17 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
 
   // wheel: 'morning' | 'midday' | 'night', daySlot: 1-7 (Mon-Sun)
   const dispenseManual = async (wheel: WheelName, daySlot: number) => {
-    await fetch('/api/web_trigger', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wheel, slot: daySlot, serial_number: deviceMeta.serial_number })
-    })
+    try {
+      const res  = await fetch('/api/web_trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wheel, slot: daySlot, serial_number: deviceMeta.serial_number })
+      })
+      const data = await res.json()
+      return { ok: res.ok, ...data }
+    } catch (e) {
+      return { ok: false, error: String(e) }
+    }
   }
 
   const updateProfile = async (updatedData: Record<string, unknown>) => {

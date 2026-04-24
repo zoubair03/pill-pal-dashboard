@@ -76,11 +76,14 @@ export default function PillPalDashboard() {
     updateSchedule,
   } = useSupabaseRealtime()
 
-  const [isOffline, setIsOffline]       = useState(false)
-  const [syncDelta, setSyncDelta]       = useState("just now")
-  const [isDispensing, setIsDispensing] = useState(false)
-  const [countdown, setCountdown]       = useState("")
-  const [isProfileOpen, setIsProfileOpen] = useState(false)
+  const [isOffline, setIsOffline]             = useState(false)
+  const [syncDelta, setSyncDelta]             = useState("just now")
+  const [isDispensing, setIsDispensing]       = useState(false)
+  const [countdown, setCountdown]             = useState("")
+  const [isProfileOpen, setIsProfileOpen]     = useState(false)
+  // Optimistic: track locally what we just sent to the device,
+  // so the UI advances immediately without waiting for the ESP32 callback.
+  const [optimistic, setOptimistic] = useState<Record<WheelName, number[]>>({ morning: [], midday: [], night: [] })
 
   // ── Hardware connection status ───────────────────────────────────────────
   useEffect(() => {
@@ -133,9 +136,16 @@ export default function PillPalDashboard() {
   // daySlot: 1=Mon...7=Sun (matches DB and firmware)
   const todayDaySlot = currentDayIndex + 1
 
-  // Check if today's dose for a given wheel is already dispensed
+  // Merge realtime + optimistic so the UI always shows the latest intent
+  const effectiveDispensed: Record<WheelName, number[]> = {
+    morning: [...new Set([...(dispensedByWheel.morning ?? []), ...optimistic.morning])],
+    midday:  [...new Set([...(dispensedByWheel.midday  ?? []), ...optimistic.midday])],
+    night:   [...new Set([...(dispensedByWheel.night   ?? []), ...optimistic.night])],
+  }
+
+  // Check if a wheel+day is dispensed (optimistic-aware)
   const isDispensed = (wheel: WheelName, daySlot: number) =>
-    (dispensedByWheel[wheel] ?? []).includes(daySlot)
+    effectiveDispensed[wheel].includes(daySlot)
 
   // Find next undispensed session for today
   let nextSessionIndex = -1
@@ -165,11 +175,12 @@ export default function PillPalDashboard() {
       const daySlot = d + 1  // 1=Mon...7=Sun
       data[daysShort[d]] = { morning: "pending", midday: "pending", night: "pending" }
       for (const w of sessionKeys) {
-        data[daysShort[d]][w] = (dispensedByWheel[w] ?? []).includes(daySlot) ? "dispensed" : "pending"
+        data[daysShort[d]][w] = effectiveDispensed[w].includes(daySlot) ? "dispensed" : "pending"
       }
     }
     return data
-  }, [dispensedByWheel])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispensedByWheel, optimistic])
 
   // ── Countdown ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -179,21 +190,47 @@ export default function PillPalDashboard() {
     return () => clearInterval(t)
   }, [nextDoseTime.hour, nextDoseTime.minute])
 
-  // ── Actions ──────────────────────────────────────────────────────────────
+  // Optimistically mark a slot so the UI advances immediately
+  const markOptimistic = (wheel: WheelName, daySlot: number) => {
+    setOptimistic(prev => ({
+      ...prev,
+      [wheel]: prev[wheel].includes(daySlot) ? prev[wheel] : [...prev[wheel], daySlot]
+    }))
+  }
+
   const handleDispense = async () => {
+    const wheel   = WHEEL_NAMES[nextSessionIndex]
+    const daySlot = dispenseDaySlot
     setIsDispensing(true)
-    await dispenseManual(WHEEL_NAMES[nextSessionIndex] as WheelName, dispenseDaySlot)
-    setTimeout(() => setIsDispensing(false), 2000)
+    // Optimistically advance the UI immediately
+    markOptimistic(wheel, daySlot)
+    try {
+      const res  = await dispenseManual(wheel, daySlot)
+      if (!res?.ok) console.error('[Dispense] MQTT failed:', res)
+    } catch (e) {
+      console.error('[Dispense] Error:', e)
+    } finally {
+      setTimeout(() => setIsDispensing(false), 1500)
+    }
   }
 
   const handleManualDispense = async (dayShortName: string, sessionName: string) => {
-    setIsDispensing(true)
-    const daysShort   = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    const daysShort = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     const wheelMap: Record<string, WheelName> = { morning: 'morning', midday: 'midday', evening: 'night', night: 'night' }
     const daySlot = daysShort.indexOf(dayShortName) + 1  // 1-7
     const wheel   = wheelMap[sessionName] ?? 'morning'
-    await dispenseManual(wheel, daySlot)
-    setTimeout(() => setIsDispensing(false), 2000)
+    if (!daySlot || daySlot < 1) return
+    setIsDispensing(true)
+    // Optimistically mark this slot immediately
+    markOptimistic(wheel, daySlot)
+    try {
+      const res = await dispenseManual(wheel, daySlot)
+      if (!res?.ok) console.error('[ManualDispense] MQTT failed:', res)
+    } catch (e) {
+      console.error('[ManualDispense] Error:', e)
+    } finally {
+      setTimeout(() => setIsDispensing(false), 1500)
+    }
   }
 
   // ── Activity icon ────────────────────────────────────────────────────────
@@ -207,7 +244,7 @@ export default function PillPalDashboard() {
   }
 
   // ── Weekly adherence stat ─────────────────────────────────────────────────
-  const weeklyDone = Object.values(dispensedByWheel).reduce((sum, arr) => sum + arr.length, 0)
+  const weeklyDone = Object.values(effectiveDispensed).reduce((sum, arr) => sum + arr.length, 0)
   const weeklyPct  = Math.round((weeklyDone / 21) * 100)
 
   // ── Render ────────────────────────────────────────────────────────────────
