@@ -36,6 +36,7 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/login') ||
     request.nextUrl.pathname.startsWith('/register') ||
     request.nextUrl.pathname.startsWith('/verify') ||
+    request.nextUrl.pathname.startsWith('/profile-setup') ||
     request.nextUrl.pathname.startsWith('/setup')
 
   if (!user && !isPublicRoute) {

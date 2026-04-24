@@ -39,7 +39,8 @@ function VerifyContent() {
       return
     }
 
-    router.push('/')
+    // Verified! Go to profile setup before device setup
+    router.push('/profile-setup')
   }
 
   // Each digit progress indicator
