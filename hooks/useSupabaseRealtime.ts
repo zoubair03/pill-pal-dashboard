@@ -64,7 +64,17 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
          }))
          
          const { data: prof } = await supabase.from('profiles').select('*').eq('id', dev.owner_id).single()
-         if (prof) setProfile(prof)
+         if (prof) {
+           setProfile(prof)
+         } else {
+           // First login — upsert a blank profile row so the dashboard has something to display
+           const { data: newProf } = await supabase
+             .from('profiles')
+             .upsert({ id: dev.owner_id, full_name: '', phone_number: '', birth_date: '2000-01-01', medication_list: [] })
+             .select()
+             .single()
+           if (newProf) setProfile(newProf)
+         }
       }
 
       // Fetch which slots are dropped (is_dispensed = true)
@@ -140,10 +150,12 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
     })
   }
 
-  const updateProfile = async (updatedData: any) => {
-    if (profile?.id) {
-       await supabase.from('profiles').update(updatedData).eq('id', profile.id)
-    }
+  const updateProfile = async (updatedData: Record<string, unknown>) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+    await supabase
+      .from('profiles')
+      .upsert({ id: session.user.id, ...updatedData })
   }
 
   const updateSchedule = async (newSchedule: any[]) => {

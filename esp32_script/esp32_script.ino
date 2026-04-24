@@ -14,16 +14,16 @@
 #include <HTTPClient.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 
 // ── Configuration ─────────────────────────────────────────
 // ⚠️  Change this to your Vercel deployment URL once deployed
 // ⚠️  For local testing: use your PC IP (e.g. http://192.168.1.81:3000)
-const char *API_BASE         = "https://YOUR-APP.vercel.app";
-const char *API_URL_DISPENSE = API_BASE "/api/dispense";
-const char *API_URL_PING     = API_BASE "/api/ping";
-const char *MQTT_BROKER      = "broker.hivemq.com";
-const int   MQTT_PORT        = 1883;
+const char *API_URL_DISPENSE = "https://pill-pal-dashboard.vercel.app/api/dispense";
+const char *API_URL_PING     = "https://pill-pal-dashboard.vercel.app/api/ping";
+const char *MQTT_BROKER = "broker.hivemq.com";
+const int MQTT_PORT = 1883;
 
 // ── NTP Settings ──────────────────────────────────────────
 const char *NTP_SERVER = "pool.ntp.org";
@@ -101,7 +101,8 @@ void advanceOneSlot() {
 // ─────────────────────────────────────────────────────────
 void sendHeartbeatAndSyncSchedule() {
   if (WiFi.status() == WL_CONNECTED) {
-    WiFiClient client;
+    WiFiClientSecure client;
+    client.setInsecure(); // Skip SSL cert verification (fine for production IoT)
     HTTPClient http;
     http.begin(client, API_URL_PING);
     http.addHeader("Content-Type", "application/json");
@@ -110,6 +111,7 @@ void sendHeartbeatAndSyncSchedule() {
     int code = http.POST(payload);
 
     if (code > 0) {
+      Serial.printf("[Ping] OK (HTTP %d)\n", code);
       String response = http.getString();
       StaticJsonDocument<512> doc;
       DeserializationError err = deserializeJson(doc, response);
@@ -122,6 +124,8 @@ void sendHeartbeatAndSyncSchedule() {
           }
         }
       }
+    } else {
+      Serial.printf("[Ping] FAILED (code %d)\n", code);
     }
     http.end();
   }
@@ -129,7 +133,8 @@ void sendHeartbeatAndSyncSchedule() {
 
 void sendDispenseLog(int slotValue) {
   if (WiFi.status() == WL_CONNECTED) {
-    WiFiClient client;
+    WiFiClientSecure client;
+    client.setInsecure();
     HTTPClient http;
     http.begin(client, API_URL_DISPENSE);
     http.addHeader("Content-Type", "application/json");
