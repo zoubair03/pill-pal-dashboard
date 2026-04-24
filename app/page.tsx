@@ -66,7 +66,7 @@ function formatCountdown(targetHour: number, targetMinute: number): string {
 export default function PillPalDashboard() {
   const {
     connected,
-    dispensedSlots,
+    dispensedByWheel,
     activityLogs,
     resetWeek,
     dispenseManual,
@@ -130,19 +130,29 @@ export default function PillPalDashboard() {
     { hour: 20, minute: 0 },
   ]
 
-  let nextSessionIndex  = -1
-  let dispenseDayIndex  = currentDayIndex
+  // Wheel names matching the new 3-wheel system
+  const WHEEL_NAMES = ['morning', 'midday', 'night'] as const
+  type WheelName = 'morning' | 'midday' | 'night'
 
+  // daySlot: 1=Mon...7=Sun (matches DB and firmware)
+  const todayDaySlot = currentDayIndex + 1
+
+  // Check if today's dose for a given wheel is already dispensed
+  const isDispensed = (wheel: WheelName, daySlot: number) =>
+    (dispensedByWheel[wheel] ?? []).includes(daySlot)
+
+  // Find next undispensed session for today
+  let nextSessionIndex = -1
   for (let s = 0; s < 3; s++) {
-    if (!dispensedSlots.includes(getSlotIndexFromDaySession(currentDayIndex, s))) {
+    if (!isDispensed(WHEEL_NAMES[s], todayDaySlot)) {
       nextSessionIndex = s
       break
     }
   }
-  if (nextSessionIndex === -1) {
-    nextSessionIndex = 0
-    dispenseDayIndex = (currentDayIndex + 1) % 7
-  }
+  const dispenseDaySlot = nextSessionIndex === -1
+    ? (todayDaySlot % 7) + 1   // tomorrow
+    : todayDaySlot
+  if (nextSessionIndex === -1) nextSessionIndex = 0
 
   const nextDoseTime        = rawSchedule[nextSessionIndex]
   const nextSessionName     = SESSIONS[nextSessionIndex] || "Next Dose"
@@ -151,19 +161,19 @@ export default function PillPalDashboard() {
   // ── Weekly matrix data ───────────────────────────────────────────────────
   type DoseStatus = "dispensed" | "pending" | "missed"
   const weekData = useMemo(() => {
-    const daysShort  = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    const sessionKeys = ["morning", "midday", "evening"] as const
-    const data: Record<string, { morning: DoseStatus; midday: DoseStatus; evening: DoseStatus }> = {}
+    const daysShort   = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    const sessionKeys = ["morning", "midday", "night"] as const
+    const data: Record<string, { morning: DoseStatus; midday: DoseStatus; night: DoseStatus }> = {}
 
     for (let d = 0; d < 7; d++) {
-      data[daysShort[d]] = { morning: "pending", midday: "pending", evening: "pending" }
-      for (let s = 0; s < 3; s++) {
-        const slot = getSlotIndexFromDaySession(d, s)
-        data[daysShort[d]][sessionKeys[s]] = dispensedSlots.includes(slot) ? "dispensed" : "pending"
+      const daySlot = d + 1  // 1=Mon...7=Sun
+      data[daysShort[d]] = { morning: "pending", midday: "pending", night: "pending" }
+      for (const w of sessionKeys) {
+        data[daysShort[d]][w] = (dispensedByWheel[w] ?? []).includes(daySlot) ? "dispensed" : "pending"
       }
     }
     return data
-  }, [dispensedSlots])
+  }, [dispensedByWheel])
 
   // ── Countdown ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -176,17 +186,17 @@ export default function PillPalDashboard() {
   // ── Actions ──────────────────────────────────────────────────────────────
   const handleDispense = async () => {
     setIsDispensing(true)
-    await dispenseManual(getSlotIndexFromDaySession(dispenseDayIndex, nextSessionIndex))
+    await dispenseManual(WHEEL_NAMES[nextSessionIndex] as WheelName, dispenseDaySlot)
     setTimeout(() => setIsDispensing(false), 2000)
   }
 
   const handleManualDispense = async (dayShortName: string, sessionName: string) => {
     setIsDispensing(true)
     const daysShort   = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    const sessionKeys = ["morning", "midday", "evening"]
-    const day         = daysShort.indexOf(dayShortName)
-    const session     = sessionKeys.indexOf(sessionName)
-    await dispenseManual(getSlotIndexFromDaySession(day, session))
+    const wheelMap: Record<string, WheelName> = { morning: 'morning', midday: 'midday', evening: 'night', night: 'night' }
+    const daySlot = daysShort.indexOf(dayShortName) + 1  // 1-7
+    const wheel   = wheelMap[sessionName] ?? 'morning'
+    await dispenseManual(wheel, daySlot)
     setTimeout(() => setIsDispensing(false), 2000)
   }
 
@@ -201,7 +211,7 @@ export default function PillPalDashboard() {
   }
 
   // ── Weekly adherence stat ─────────────────────────────────────────────────
-  const weeklyDone = dispensedSlots.length
+  const weeklyDone = Object.values(dispensedByWheel).reduce((sum, arr) => sum + arr.length, 0)
   const weeklyPct  = Math.round((weeklyDone / 21) * 100)
 
   // ── Render ────────────────────────────────────────────────────────────────
