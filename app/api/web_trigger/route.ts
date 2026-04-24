@@ -3,17 +3,17 @@ import mqtt from 'mqtt'
 
 export async function POST(req: Request) {
   try {
-    const { slot_number, serial_number } = await req.json()
-    
-    if (!serial_number) {
-      return NextResponse.json({ error: 'Missing serial_number' }, { status: 400 })
+    // wheel: 'morning' | 'midday' | 'night'
+    // slot:  1-7 (day of week: Mon=1 ... Sun=7)
+    const { wheel, slot, serial_number } = await req.json()
+
+    if (!serial_number || !wheel) {
+      return NextResponse.json({ error: 'Missing serial_number or wheel' }, { status: 400 })
     }
 
-    // Connect to HiveMQ Public Broker
     const client = mqtt.connect('mqtt://broker.hivemq.com:1883')
 
     return new Promise<Response>((resolve) => {
-      // Setup timeout to prevent hanging API
       const timeout = setTimeout(() => {
         client.end()
         resolve(NextResponse.json({ error: 'MQTT connection timeout' }, { status: 504 }))
@@ -21,13 +21,17 @@ export async function POST(req: Request) {
 
       client.on('connect', () => {
         clearTimeout(timeout)
-        const topic = `pillpal/cmd/${serial_number}`
-        const payload = JSON.stringify({ action: "dispense", slot: slot_number })
-        
-        // Publish and close immediately
+        const topic   = `pillpal/cmd/${serial_number}`
+        // New payload includes wheel + day slot
+        const payload = JSON.stringify({
+          action: 'dispense',
+          wheel,
+          slot: slot ?? new Date().getDay() || 7   // fallback to today's day (1-7)
+        })
+
         client.publish(topic, payload, { qos: 1 }, () => {
           client.end()
-          resolve(NextResponse.json({ success: true, published: true, topic, payload }))
+          resolve(NextResponse.json({ success: true, topic, payload }))
         })
       })
 
@@ -38,7 +42,7 @@ export async function POST(req: Request) {
       })
     })
 
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 })
   }
 }

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
+export type WheelName = 'morning' | 'midday' | 'night'
+export type DispensedByWheel = Record<WheelName, number[]>
+
 export function useSupabaseRealtime(initialDeviceId?: string | null) {
   const [deviceId, setDeviceId] = useState<string | null>(initialDeviceId || null)
-  const [dispensedSlots, setDispensedSlots] = useState<number[]>([])
+  const [dispensedByWheel, setDispensedByWheel] = useState<DispensedByWheel>({ morning: [], midday: [], night: [] })
   const [activityLogs, setActivityLogs] = useState<any[]>([])
   const [connected, setConnected] = useState(false)
   const defaultSchedule = [
@@ -77,9 +80,20 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
          }
       }
 
-      // Fetch which slots are dropped (is_dispensed = true)
-      const { data: slots } = await supabase.from('medication_slots').select('slot_number').eq('device_id', deviceId).eq('is_dispensed', true)
-      if (slots) setDispensedSlots(slots.map(s => s.slot_number))
+      // Fetch dispensed slots grouped by wheel
+      const { data: slots } = await supabase
+        .from('medication_slots')
+        .select('wheel, slot_number')
+        .eq('device_id', deviceId)
+        .eq('is_dispensed', true)
+
+      if (slots) {
+        const byWheel: DispensedByWheel = { morning: [], midday: [], night: [] }
+        for (const s of slots) {
+          if (byWheel[s.wheel as WheelName]) byWheel[s.wheel as WheelName].push(s.slot_number)
+        }
+        setDispensedByWheel(byWheel)
+      }
 
       // Build out recent history array from dispense_logs
       const { data: logs } = await supabase.from('dispense_logs').select('*').eq('device_id', deviceId).order('created_at', { ascending: false }).limit(5)
@@ -98,12 +112,33 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
     // Instantly react when the database is updated without reloading!
     const channel = supabase
       .channel(`device-${deviceId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'medication_slots', filter: `device_id=eq.${deviceId}` }, (payload) => {
-          if (payload.new.is_dispensed) {
-            setDispensedSlots(prev => prev.includes(payload.new.slot_number) ? prev : [...prev, payload.new.slot_number])
-          } else {
-            setDispensedSlots(prev => prev.filter(s => s !== payload.new.slot_number))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'medication_slots', filter: `device_id=eq.${deviceId}` }, (payload) => {
+          const s = payload.new
+          if (s.is_dispensed) {
+            setDispensedByWheel(prev => {
+              const updated = { ...prev }
+              const wheel = s.wheel as WheelName
+              if (updated[wheel] && !updated[wheel].includes(s.slot_number)) {
+                updated[wheel] = [...updated[wheel], s.slot_number]
+              }
+              return updated
+            })
           }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'medication_slots', filter: `device_id=eq.${deviceId}` }, (payload) => {
+          const s = payload.new
+          setDispensedByWheel(prev => {
+            const updated = { ...prev }
+            const wheel = s.wheel as WheelName
+            if (s.is_dispensed) {
+              if (updated[wheel] && !updated[wheel].includes(s.slot_number)) {
+                updated[wheel] = [...updated[wheel], s.slot_number]
+              }
+            } else {
+              if (updated[wheel]) updated[wheel] = updated[wheel].filter(n => n !== s.slot_number)
+            }
+            return updated
+          })
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dispense_logs', filter: `device_id=eq.${deviceId}` }, (payload) => {
           const log = payload.new
@@ -142,11 +177,12 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
     })
   }
 
-  const dispenseManual = async (slot_number: number) => {
-    await fetch("/api/web_trigger", {
-       method: "POST",
-       headers: { "Content-Type": "application/json" },
-       body: JSON.stringify({ slot_number, serial_number: deviceMeta.serial_number })
+  // wheel: 'morning' | 'midday' | 'night', daySlot: 1-7 (Mon-Sun)
+  const dispenseManual = async (wheel: WheelName, daySlot: number) => {
+    await fetch('/api/web_trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wheel, slot: daySlot, serial_number: deviceMeta.serial_number })
     })
   }
 
@@ -164,5 +200,5 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
     }
   }
 
-  return { connected, dispensedSlots, activityLogs, resetWeek, dispenseManual, deviceMeta, deviceId, profile, updateProfile, updateSchedule }
+  return { connected, dispensedByWheel, activityLogs, resetWeek, dispenseManual, deviceMeta, deviceId, profile, updateProfile, updateSchedule }
 }
