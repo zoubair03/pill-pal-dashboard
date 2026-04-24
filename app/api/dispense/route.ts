@@ -9,13 +9,15 @@ const supabaseAdmin = createClient(
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    console.log(`\n\n=== INCOMING DISPENSE REQUEST ===\nSN: ${body.serial_number}\nSLOT: ${body.slot_number}\n=================================\n\n`);
     const { serial_number, slot_number } = body
+
+    console.log(`[Dispense] SN=${serial_number} physical_slot=${slot_number}`)
 
     if (!serial_number || slot_number === undefined) {
       return NextResponse.json({ error: 'Missing serial_number or slot_number' }, { status: 400 })
     }
 
+    // 1. Find device
     const { data: device, error: deviceError } = await supabaseAdmin
       .from('devices')
       .select('id, owner_id')
@@ -23,71 +25,58 @@ export async function POST(req: Request) {
       .single()
 
     if (deviceError || !device) {
-      return NextResponse.json({ error: 'Device not authorized or not found' }, { status: 404 })
+      console.error('[Dispense] Device not found:', serial_number, deviceError?.message)
+      return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     }
 
-    const { data: slot } = await supabaseAdmin
-      .from('medication_slots')
-      .select('id, med_list')
-      .eq('device_id', device.id)
-      .eq('slot_number', slot_number)
-      .single()
-
-    let medList = []
-    if (slot) {
-      medList = slot.med_list || []
-      const { error: updateError } = await supabaseAdmin
-        .from('medication_slots')
-        .update({ is_dispensed: true })
-        .eq('id', slot.id)
-        
-      if (updateError) {
-        return NextResponse.json({ error: 'Failed to update slot status' }, { status: 500 })
-      }
-    } else {
-      // If the slot record doesn't exist yet, create it and mark it dispensed
-      const { error: insertError } = await supabaseAdmin
-        .from('medication_slots')
-        .insert({
-          device_id: device.id,
-          slot_number: slot_number,
-          is_dispensed: true,
-          med_list: []
-        })
-        
-      if (insertError) {
-        return NextResponse.json({ error: 'Failed to create slot status' }, { status: 500 })
-      }
-    }
-
-    // Only update the device's physical motor pointer — NOT last_sync!
-    // last_sync should only be touched by the real hardware heartbeat (/api/ping)
+    // 2. Update device's current physical slot
     await supabaseAdmin
       .from('devices')
       .update({ current_slot: slot_number })
       .eq('id', device.id)
 
-    if (updateError) {
-      return NextResponse.json({ error: 'Failed to update slot status' }, { status: 500 })
+    // 3. Upsert medication_slot row for this physical slot
+    //    Using upsert so we never get duplicate-key 500 errors
+    const { error: slotError } = await supabaseAdmin
+      .from('medication_slots')
+      .upsert(
+        {
+          device_id:   device.id,
+          slot_number: slot_number,
+          is_dispensed: true,
+          med_list:    []
+        },
+        { onConflict: 'device_id,slot_number' }
+      )
+
+    if (slotError) {
+      console.error('[Dispense] Slot upsert failed:', slotError.message)
+      // Non-fatal — still log the dispense event
     }
 
+    // 4. Write to dispense_logs
     const { error: logError } = await supabaseAdmin
       .from('dispense_logs')
       .insert({
-        device_id: device.id,
-        slot_number: slot_number,
-        session_type: 'automated',
-        status: 'dispensed',
-        meds_dispensed: medList
+        device_id:      device.id,
+        slot_number:    slot_number,
+        session_type:   'automated',
+        status:         'dispensed',
+        meds_dispensed: []
       })
 
     if (logError) {
-      return NextResponse.json({ error: 'Failed to document dispense event' }, { status: 500 })
+      console.error('[Dispense] Log insert failed:', logError.message)
+      return NextResponse.json({ error: 'Failed to log dispense event' }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, message: `Slot ${slot_number} dispensed successfully.` })
+    return NextResponse.json({ success: true, message: `Slot ${slot_number} dispensed.` })
 
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal Server Error' }, { status: 500 })
+  } catch (err) {
+    console.error('[Dispense] Unexpected error:', err)
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Internal Server Error' },
+      { status: 500 }
+    )
   }
 }
