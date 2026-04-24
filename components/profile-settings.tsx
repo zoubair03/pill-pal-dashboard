@@ -1,20 +1,14 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Search, X, Plus, Pill, User } from "lucide-react"
+import { Search, X, Plus, Pill, User, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-const MEDICATION_DB = [
-  "Aspirin", "Metformin", "Lisinopril", "Atorvastatin", "Vitamin D",
-  "Amoxicillin", "Ibuprofen", "Omeprazole", "Losartan", "Gabapentin",
-  "Amlodipine", "Paracetamol", "Furosemide", "Warfarin", "Sertraline",
-]
 
 export interface PatientProfile {
   name: string
@@ -33,12 +27,23 @@ interface ProfileSettingsProps {
 }
 
 export function ProfileSettings({ open, onOpenChange, profile, onUpdateProfile }: ProfileSettingsProps) {
-  const [searchValue, setSearchValue] = useState("")
+  const [searchValue, setSearchValue]   = useState("")
+  const [dbResults, setDbResults]       = useState<{ id: number; label: string; dci: string; dose: string; form: string; classe: string }[]>([])
+  const [searching, setSearching]       = useState(false)
 
-  const filteredMeds = useMemo(() => {
-    if (!searchValue.trim()) return []
-    const q = searchValue.toLowerCase()
-    return MEDICATION_DB.filter(m => m.toLowerCase().includes(q)).slice(0, 8)
+  // Debounced search against /api/medications
+  useEffect(() => {
+    if (searchValue.trim().length < 2) { setDbResults([]); return }
+    const timer = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const res  = await fetch(`/api/medications?q=${encodeURIComponent(searchValue.trim())}`)
+        const data = await res.json()
+        setDbResults(Array.isArray(data) ? data : [])
+      } catch { setDbResults([]) }
+      finally { setSearching(false) }
+    }, 300)
+    return () => clearTimeout(timer)
   }, [searchValue])
 
   const addMed = (label: string) => {
@@ -144,28 +149,37 @@ export function ProfileSettings({ open, onOpenChange, profile, onUpdateProfile }
               />
             </div>
 
-            {searchValue.trim().length > 0 && (
+            {searchValue.trim().length > 1 && (
               <div className="mt-2 overflow-hidden rounded-xl border border-border/60 bg-card shadow-md">
                 <ScrollArea className="max-h-48">
                   <div className="p-1.5 space-y-0.5">
-                    {filteredMeds.length > 0 ? (
-                      filteredMeds.map(med => {
-                        const isAdded = profile.prescriptions.includes(med)
+                    {searching ? (
+                      <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Searching database...
+                      </div>
+                    ) : dbResults.length > 0 ? (
+                      dbResults.map(med => {
+                        const isAdded = profile.prescriptions.includes(med.label)
                         return (
                           <div
-                            key={med}
+                            key={med.id}
                             className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-secondary/60 transition-colors"
                           >
-                            <div className="flex items-center gap-2">
-                              <Pill className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span className="text-sm font-medium">{med}</span>
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-2">
+                                <Pill className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                <span className="text-sm font-medium">{med.label}</span>
+                              </div>
+                              {med.dci && (
+                                <span className="ml-5 text-xs text-muted-foreground">{med.dci} · {med.dose} · {med.form}</span>
+                              )}
                             </div>
                             <Button
                               variant={isAdded ? "secondary" : "default"}
                               size="sm"
-                              className="h-7 rounded-lg px-2.5 text-xs"
+                              className="h-7 shrink-0 rounded-lg px-2.5 text-xs"
                               disabled={isAdded}
-                              onClick={() => addMed(med)}
+                              onClick={() => addMed(med.label)}
                             >
                               {isAdded ? "Added" : <><Plus className="h-3 w-3 mr-1" />Add</>}
                             </Button>
