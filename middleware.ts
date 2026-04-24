@@ -29,10 +29,10 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
   
-  // Public routes: no session required
-  // /verify  — user hasn't authenticated yet (entering OTP)
-  // /setup   — needed right after first login to claim the device
+  // Public routes — no session required
+  // /api/ routes are ALWAYS public (ESP32 hardware has no session cookie)
   const isPublicRoute =
+    request.nextUrl.pathname.startsWith('/api/') ||
     request.nextUrl.pathname.startsWith('/login') ||
     request.nextUrl.pathname.startsWith('/register') ||
     request.nextUrl.pathname.startsWith('/verify') ||

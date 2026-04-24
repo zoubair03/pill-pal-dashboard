@@ -101,7 +101,7 @@ export default function PillPalDashboard() {
 
   // ── Profile ──────────────────────────────────────────────────────────────
   const profile: PatientProfile = {
-    name: remoteProfile?.full_name || "Loading...",
+    name: remoteProfile?.full_name || (remoteProfile ? "New Patient" : "Loading..."),
     age:  remoteProfile?.birth_date
       ? Math.floor((Date.now() - new Date(remoteProfile.birth_date).getTime()) / 31557600000)
       : 0,
