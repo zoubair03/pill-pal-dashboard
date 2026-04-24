@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "PillPal",
+    "slug": "pillpal-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.pillpal.mobile",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "PillPal uses Bluetooth to configure your medication dispenser.",
+        "NSBluetoothPeripheralUsageDescription": "PillPal uses Bluetooth to configure your medication dispenser.",
+        "NSLocationWhenInUseUsageDescription": "Required for Bluetooth device scanning on iOS."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "package": "com.pillpal.mobile",
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["central"],
+          "bluetoothAlwaysPermission": "Allow PillPal to connect to your medication dispenser."
+        }
+      ]
+    ],
+    "scheme": "pillpal",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
