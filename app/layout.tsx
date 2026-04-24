@@ -15,6 +15,12 @@ export const metadata: Metadata = {
   title: 'PillPal - Smart Medication Dashboard',
   description: 'Clinical-grade IoT pill dispenser dashboard for medication management',
   generator: 'v0.app',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'PillPal',
+  },
   icons: {
     icon: [
       {
