@@ -231,8 +231,11 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
   }
 
   if (action == "reset_all") {
-    Serial.println("[MQTT] Resetting ALL wheels to home");
-    for (int w = 0; w < 3; w++) advanceWheelToSlot(w, 0);
+    Serial.println("[MQTT] Resetting ALL wheels to home + clearing schedule state");
+    for (int w = 0; w < 3; w++) {
+      advanceWheelToSlot(w, 0);
+      lastDispensedDay[w] = -1;   // allow today's dose to fire again
+    }
   }
 }
 
@@ -271,8 +274,9 @@ void setup() {
   wm.setTitle("PillPal Setup");
   wm.setConfigPortalTimeout(180);
 
-  // ⚠️ TEMPORARY: Delete the line below after WiFi connects successfully!
-  wm.resetSettings();
+  // ✅ WiFi credentials are saved automatically by WiFiManager.
+  // Only uncomment the line below if you need to force re-provisioning:
+  // wm.resetSettings();
 
   if (!wm.autoConnect("PillPal-Setup")) {
     Serial.println("[WiFi] Portal timed out. Restarting...");

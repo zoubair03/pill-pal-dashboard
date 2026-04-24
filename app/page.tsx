@@ -539,7 +539,7 @@ export default function PillPalDashboard() {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={resetWeek} className="bg-red-600 hover:bg-red-700">
+                  <AlertDialogAction onClick={async () => { await resetWeek(); setOptimistic({ morning: [], midday: [], night: [] }) }} className="bg-red-600 hover:bg-red-700">
                     Yes, Reset Week
                   </AlertDialogAction>
                 </AlertDialogFooter>

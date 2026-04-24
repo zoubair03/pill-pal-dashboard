@@ -170,11 +170,18 @@ export function useSupabaseRealtime(initialDeviceId?: string | null) {
   }, [deviceId])
 
   const resetWeek = async () => {
-    await fetch("/api/reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ serial_number: deviceMeta.serial_number })
-    })
+    try {
+      const res = await fetch("/api/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serial_number: deviceMeta.serial_number })
+      })
+      // Immediately clear local state so UI shows empty week right away
+      setDispensedByWheel({ morning: [], midday: [], night: [] })
+      return { ok: res.ok }
+    } catch (e) {
+      return { ok: false }
+    }
   }
 
   // wheel: 'morning' | 'midday' | 'night', daySlot: 1-7 (Mon-Sun)
