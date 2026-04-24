@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Pill, ArrowRight, Loader2 } from 'lucide-react'
+import { Pill, ArrowRight, Loader2, Mail, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,8 +11,8 @@ import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [email, setEmail]   = useState('')
+  const [error, setError]   = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -22,17 +22,15 @@ export default function LoginPage() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: {
-        shouldCreateUser: false, // Login page shouldn't create accounts!
-      }
+      options: { shouldCreateUser: false },
     })
 
     if (error) {
-      if (error.message.includes("Signups not allowed for otp")) {
-         setError("No account found with this email. Please register first.")
-      } else {
-         setError(error.message)
-      }
+      setError(
+        error.message.includes("Signups not allowed for otp")
+          ? "No account found with this email. Please register first."
+          : error.message
+      )
       setLoading(false)
     } else {
       router.push(`/verify?email=${encodeURIComponent(email)}`)
@@ -40,50 +38,74 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 p-4">
-      <div className="w-full max-w-sm space-y-8 bg-white dark:bg-zinc-900 p-8 rounded-3xl shadow-xl shadow-emerald-500/5 border border-zinc-200 dark:border-zinc-800">
-        
-        <div className="text-center space-y-2">
-          <div className="mx-auto w-12 h-12 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mb-4">
-            <Pill className="h-6 w-6" />
+    <div className="mesh-bg min-h-screen flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
+
+        {/* Brand mark */}
+        <div className="mb-8 flex flex-col items-center text-center">
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-xl shadow-primary/30">
+            <Pill className="h-7 w-7" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Welcome to PillPal</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Enter your email to receive a secure login code.
           </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4 pt-4">
-          {error && (
-            <div className="p-3 text-sm bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-lg border border-red-100 dark:border-red-900/50">
-              {error}
-            </div>
-          )}
+        {/* Card */}
+        <div className="rounded-2xl border border-border/60 bg-card shadow-xl shadow-black/5 dark:shadow-black/20">
+          <div className="p-6 sm:p-8">
+            <form onSubmit={handleLogin} className="space-y-5">
+              {error && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-400">
+                  <span className="mt-0.5 shrink-0">⚠</span>
+                  {error}
+                </div>
+              )}
 
-          <div className="space-y-2">
-            <Label htmlFor="email">Email address</Label>
-            <Input 
-              id="email" 
-              type="email" 
-              disabled={loading}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@example.com" 
-              required 
-            />
+              <div className="space-y-1.5">
+                <Label htmlFor="email" className="text-sm font-semibold">Email address</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    disabled={loading}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@example.com"
+                    className="pl-9 h-11"
+                    required
+                  />
+                </div>
+              </div>
+
+              <Button
+                id="send-otp-btn"
+                type="submit"
+                className="w-full h-11 gap-2 bg-primary hover:bg-primary/90 font-semibold shadow-md shadow-primary/20 transition-all hover:shadow-lg hover:shadow-primary/30"
+                disabled={loading}
+              >
+                {loading
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending code...</>
+                  : <><ShieldCheck className="h-4 w-4" /> Send Login Code</>
+                }
+              </Button>
+            </form>
           </div>
 
-          <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white mt-4" disabled={loading}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Login Code"}
-          </Button>
-
-          <p className="text-center text-sm text-zinc-500 dark:text-zinc-400 pt-4">
-            Don't have an account?{' '}
-            <Link href="/register" className="font-semibold text-emerald-600 dark:text-emerald-500 hover:text-emerald-500">
-              Register here <ArrowRight className="inline h-3 w-3 ml-0.5" />
+          {/* Footer */}
+          <div className="border-t border-border/50 px-6 py-4 text-center text-sm text-muted-foreground">
+            Don&apos;t have an account?{' '}
+            <Link href="/register" className="font-semibold text-primary hover:text-primary/80 transition-colors">
+              Register here <ArrowRight className="inline h-3.5 w-3.5" />
             </Link>
-          </p>
-        </form>
+          </div>
+        </div>
+
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          Secured by Supabase Auth · No passwords stored
+        </p>
       </div>
     </div>
   )

@@ -16,7 +16,7 @@ export async function POST(req: Request) {
 
     // Use Service Role admin client to actually manipulate DB, but verify Token first!
     const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
       process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
     )
 
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, message: 'Device successfully claimed.' })
 
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }

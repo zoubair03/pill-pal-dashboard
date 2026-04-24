@@ -3,7 +3,7 @@
 import { useState, Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Pill, CheckCircle2, Loader2 } from 'lucide-react'
+import { MailCheck, Loader2, ArrowLeft, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabase'
@@ -11,18 +11,15 @@ import { supabase } from '@/lib/supabase'
 function VerifyContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const emailParam = searchParams.get('email')
-  
-  const [email] = useState(emailParam || '')
+  const emailParam   = searchParams.get('email')
+
+  const [email]           = useState(emailParam || '')
   const [token, setToken] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  // Auto redirect if someone lands here without an email
   useEffect(() => {
-    if (!email) {
-      router.push('/login')
-    }
+    if (!email) router.push('/login')
   }, [email, router])
 
   const handleVerify = async (e: React.FormEvent) => {
@@ -30,10 +27,10 @@ function VerifyContent() {
     setError(null)
     setLoading(true)
 
-    const { data, error: verifyError } = await supabase.auth.verifyOtp({
+    const { error: verifyError } = await supabase.auth.verifyOtp({
       email,
       token,
-      type: 'email'
+      type: 'email',
     })
 
     if (verifyError) {
@@ -42,63 +39,122 @@ function VerifyContent() {
       return
     }
 
-    // Success! Let middleware/hooks redirect them if they need setup!
     router.push('/')
   }
 
+  // Each digit progress indicator
+  const filled = token.length
+
   return (
-    <div className="w-full max-w-sm space-y-8 bg-white dark:bg-zinc-900 p-8 rounded-3xl shadow-xl shadow-emerald-500/5 border border-zinc-200 dark:border-zinc-800">
-      
-      <div className="text-center space-y-2">
-        <div className="mx-auto w-12 h-12 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mb-4">
-          <CheckCircle2 className="h-6 w-6" />
+    <div className="w-full max-w-sm">
+
+      {/* Brand */}
+      <div className="mb-8 flex flex-col items-center text-center">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 shadow-lg shadow-emerald-500/15">
+          <MailCheck className="h-7 w-7" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">Check your email</h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          We've sent a 6-digit code to <span className="font-semibold text-zinc-900 dark:text-zinc-100">{email}</span>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Check your inbox</h1>
+        <p className="mt-2 text-sm text-muted-foreground max-w-xs">
+          We sent a 6-digit code to{' '}
+          <span className="font-semibold text-foreground">{email}</span>.
+          Enter it below to sign in.
         </p>
       </div>
 
-      <form onSubmit={handleVerify} className="space-y-4 pt-4">
-        {error && (
-          <div className="p-3 text-sm bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-lg border border-red-100 dark:border-red-900/50">
-            {error}
-          </div>
-        )}
+      {/* Card */}
+      <div className="rounded-2xl border border-border/60 bg-card shadow-xl shadow-black/5 dark:shadow-black/20">
+        <div className="p-6 sm:p-8">
+          <form onSubmit={handleVerify} className="space-y-5">
+            {error && (
+              <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-400">
+                <span className="mt-0.5 shrink-0">⚠</span>
+                {error}
+              </div>
+            )}
 
-        <div className="space-y-2">
-          <Input 
-            id="token" 
-            type="text" 
-            inputMode="numeric"
-            maxLength={6}
-            disabled={loading}
-            value={token}
-            onChange={(e) => setToken(e.target.value.replace(/[^0-9]/g, ''))}
-            placeholder="•  •  •  •  •  •" 
-            className="text-center text-2xl tracking-[0.5em] font-mono h-14"
-            required 
-          />
+            {/* Code input */}
+            <div className="space-y-3">
+              <Input
+                id="otp-input"
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                disabled={loading}
+                value={token}
+                onChange={(e) => setToken(e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="• • • • • •"
+                className="text-center text-3xl tracking-[0.6em] font-mono h-16 border-2 focus:border-primary transition-colors"
+                required
+              />
+
+              {/* Progress dots */}
+              <div className="flex items-center justify-center gap-1.5">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`h-1.5 w-6 rounded-full transition-all duration-300 ${
+                      i < filled ? 'bg-primary' : 'bg-border'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <Button
+              id="verify-btn"
+              type="submit"
+              className="w-full h-11 gap-2 bg-primary hover:bg-primary/90 font-semibold shadow-md shadow-primary/20 transition-all hover:shadow-lg hover:shadow-primary/30"
+              disabled={loading || token.length !== 6}
+            >
+              {loading
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Verifying...</>
+                : 'Verify & Sign In'
+              }
+            </Button>
+          </form>
         </div>
 
-        <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white mt-4 h-12" disabled={loading || token.length !== 6}>
-          {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Verify Code"}
-        </Button>
-
-        <p className="text-center text-sm text-zinc-500 dark:text-zinc-400 pt-4">
-          <Link href="/login" className="font-semibold text-zinc-600 dark:text-zinc-400 hover:text-emerald-600">
-            Re-enter email address
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-border/50 px-6 py-4 text-sm text-muted-foreground">
+          <Link
+            href="/login"
+            className="flex items-center gap-1.5 font-medium hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Change email
           </Link>
-        </p>
-      </form>
+          <button
+            type="button"
+            onClick={async () => {
+              await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } })
+            }}
+            className="flex items-center gap-1.5 font-medium text-primary hover:text-primary/80 transition-colors"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Resend code
+          </button>
+        </div>
+      </div>
+
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        Code expires in 10 minutes · Check spam if not received
+      </p>
     </div>
   )
 }
 
 export default function VerifyPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 p-4">
-      <Suspense fallback={<div className="animate-pulse w-64 h-64 bg-zinc-200 dark:bg-zinc-800 rounded-3xl" />}>
+    <div className="mesh-bg min-h-screen flex items-center justify-center p-4">
+      <Suspense
+        fallback={
+          <div className="w-full max-w-sm space-y-4">
+            <div className="skeleton h-14 w-14 rounded-2xl mx-auto" />
+            <div className="skeleton h-8 w-48 rounded-lg mx-auto" />
+            <div className="skeleton h-64 w-full rounded-2xl" />
+          </div>
+        }
+      >
         <VerifyContent />
       </Suspense>
     </div>

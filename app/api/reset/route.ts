@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import mqtt from 'mqtt'
 
 const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL',
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_KEY'
 )
 
@@ -62,14 +62,14 @@ export async function POST(req: Request) {
         })
       })
       
-      client.on('error', (err) => {
+      client.on('error', () => {
         clearTimeout(timeout)
         client.end()
         resolve(NextResponse.json({ success: true, message: 'DB Reset, but MQTT failed.' }))
       })
     })
 
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal Server Error' }, { status: 500 })
   }
 }

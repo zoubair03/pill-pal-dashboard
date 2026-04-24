@@ -2,24 +2,24 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL',
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_KEY'
 )
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    console.log(`\n\n=== INCOMING DISPENSE REQUEST ===\nMAC: ${body.mac_address}\nSLOT: ${body.slot_number}\n=================================\n\n`);
-    const { mac_address, slot_number } = body
+    console.log(`\n\n=== INCOMING DISPENSE REQUEST ===\nSN: ${body.serial_number}\nSLOT: ${body.slot_number}\n=================================\n\n`);
+    const { serial_number, slot_number } = body
 
-    if (!mac_address || slot_number === undefined) {
-      return NextResponse.json({ error: 'Missing mac_address or slot_number' }, { status: 400 })
+    if (!serial_number || slot_number === undefined) {
+      return NextResponse.json({ error: 'Missing serial_number or slot_number' }, { status: 400 })
     }
 
     const { data: device, error: deviceError } = await supabaseAdmin
       .from('devices')
       .select('id, owner_id')
-      .eq('mac_address', mac_address)
+      .eq('serial_number', serial_number)
       .single()
 
     if (deviceError || !device) {
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, message: `Slot ${slot_number} dispensed successfully.` })
 
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal Server Error' }, { status: 500 })
   }
 }

@@ -17,8 +17,9 @@
 #include "time.h"
 
 // ── Configuration ─────────────────────────────────────────
-const char* API_URL_DISPENSE = "http://192.168.1.100:3000/api/dispense";
-const char* API_URL_PING     = "http://192.168.1.100:3000/api/ping";
+// ⚠️  UPDATE THIS IP if your PC address changes (run `ipconfig` to check)
+const char* API_URL_DISPENSE = "http://192.168.1.81:3000/api/dispense";
+const char* API_URL_PING     = "http://192.168.1.81:3000/api/ping";
 const char* MQTT_BROKER      = "broker.hivemq.com";
 const int   MQTT_PORT        = 1883;
 
@@ -94,8 +95,9 @@ void advanceOneSlot() {
 // ─────────────────────────────────────────────────────────
 void sendHeartbeatAndSyncSchedule() {
   if (WiFi.status() == WL_CONNECTED) {
+    WiFiClient client;
     HTTPClient http;
-    http.begin(API_URL_PING);
+    http.begin(client, API_URL_PING);
     http.addHeader("Content-Type", "application/json");
 
     String payload = "{\"serial_number\":\"" + String(SERIAL_NUMBER) + "\"}";
@@ -121,8 +123,9 @@ void sendHeartbeatAndSyncSchedule() {
 
 void sendDispenseLog(int slotValue) {
   if (WiFi.status() == WL_CONNECTED) {
+    WiFiClient client;
     HTTPClient http;
-    http.begin(API_URL_DISPENSE);
+    http.begin(client, API_URL_DISPENSE);
     http.addHeader("Content-Type", "application/json");
 
     String payload = "{\"serial_number\":\"" + String(SERIAL_NUMBER) + "\",\"slot_number\":" + String(slotValue) + "}";
